@@ -1,0 +1,14 @@
+*.h linguist-language=C++
+
+.github        export-ignore
+.gitignore     export-ignore
+.gitattributes export-ignore
+
+*.png  -text -eol
+*.jpg  -text -eol
+*.wav  -text -eol
+*.ogg  -text -eol
+*.flac -text -eol
+*.ttf  -text -eol
+*.icns -text -eol
+*.rtf  -text -eol

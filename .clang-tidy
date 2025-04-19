@@ -1,0 +1,23 @@
+# To run clang-tidy from CMake, build with -DENABLE_CLANG_TIDY=1.
+# To show all warnings, it is recommended to pass "-k0" to Ninja.
+
+UseColor: true
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^.*/(src|include|test|examples)/.*'
+
+# Enable all checks + disable selected checks.
+Checks: [
+  '*',
+
+  '-llvm-*', '-llvmlibc-*', '-linuxkernel-*',
+  '-boost-*', '-abseil-*', '-altera-*',
+  '-zircon-*', '-fuchsia-*', '-android-*', '-darwin-*',
+
+  '-cppcoreguidelines-*', # impractical in a large codebase, also slow
+
+  '-hicpp-vararg',
+  '-readability-magic-numbers',
+  '-readability-identifier-length',
+  '-modernize-use-trailing-return-type',
+  '-misc-non-private-member-variables-in-classes',
+]

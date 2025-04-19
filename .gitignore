@@ -1,0 +1,30 @@
+/build
+/build-*
+/build_*
+
+# ignore build files
+CMakeCache.txt
+CMakeFiles
+Makefile
+cmake_install.cmake
+CTestTestfile.cmake
+**/CMakeUserPresets.json
+*.a
+*.o
+*.so
+*.dll
+*.lib
+*.dylib
+cmake-build-*
+
+# editors specific
+*~
+*\#
+.tramp_history
+.idea
+.vs
+.vscode
+
+# clangd cache
+/.cache
+/compile_commands.json
