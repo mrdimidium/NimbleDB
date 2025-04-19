@@ -1,0 +1,54 @@
+name: Build and test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  linux:
+    runs-on: "ubuntu-24.04"
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc-14, llvm-19]
+        library: [static, shared]
+        sanitizer: ['', asan, ubsan]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install C++ toolchain
+      uses: aminya/setup-cpp@v1
+      with:
+        compiler: ${{ matrix.compiler }}
+        cmake: true
+        ninja: true
+        conan: true
+        clang-tidy: true
+        clang-format: true
+
+    - name: Check code formatting
+      if: startsWith(matrix.compiler, 'llvm')
+      run: |
+        clang-format --dry-run -Werror $(git ls-files | grep -E -i '\.(h|c|cc)$')
+
+    - name: Configure solution
+      env:
+        CMAKE_GENERATOR: "Ninja Multi-Config"
+        CMAKE_CONFIGURATION_TYPES: "Release;MinSizeRel;RelWithDebInfo;Debug"
+      run: |-
+        [ "${{matrix.sharedlibs}}" == "shared" ] && build_shared="on" || build_shared="off"
+        cmake -LAH -S. -B'build/' -DCMAKE_VERBOSE_MAKEFILE=ON \
+          -DBUILD_SHARED_LIBS="$build_shared" \
+          -DNIMBLEDB_WITH_TESTS=ON \
+          -DNIMBLEDB_WITH_CLANG_TIDY=ON \
+          -DNIMBLEDB_FAIL_ON_WARNINGS=ON \
+          -DNIMBLEDB_SANITIZER="${{matrix.sanitizer}}"
+
+    - name: Build & Test
+      run: |
+        for build_type in "Debug" "Release" "RelWithDebInfo" "MinSizeRel"; do
+          cmake --build "build/" --config "$build_type"
+          ctest --test-dir "build/" -C "$build_type"
+        done

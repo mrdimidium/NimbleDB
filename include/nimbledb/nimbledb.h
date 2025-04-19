@@ -5,9 +5,27 @@
 #ifndef NIMBLEDB_NIMBLEDB_H_
 #define NIMBLEDB_NIMBLEDB_H_
 
+#if defined(NIMBLEDB_SHARED)
+  #if defined(WIN32) && !defined(__MINGW32__)
+    #if defined(NIMBLEDB_SHARED_EXPORTS)
+      #define NIMBLEDB_EXPORTS __declspec(dllexport)
+    #else
+      #define NIMBLEDB_EXPORTS __declspec(dllimport)
+    #endif
+  #else
+    #if defined(NIMBLEDB_SHARED_EXPORTS)
+      #define NIMBLEDB_EXPORTS __attribute__((visibility("default")))
+    #else
+      #define NIMBLEDB_EXPORTS
+    #endif
+  #endif
+#else
+  #define NIMBLEDB_EXPORTS
+#endif
+
 namespace nimbledb {
 
-class DB {
+class NIMBLEDB_EXPORTS DB {
  public:
   // No copying & moving allowed
   DB(DB &) = delete;
