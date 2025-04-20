@@ -6,13 +6,14 @@ cmake_minimum_required(VERSION 3.31)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/")
 include(GetVersion)
-include(NimbleCompileWarnings)
 
 get_nimbledb_version(nimbledb_VERSION)
 project(nimbledb
   VERSION     ${nimbledb_VERSION}
   LANGUAGES   CXX
   DESCRIPTION "Robust ACID in-process key-value database for modern hardware")
+
+include(NimbleCompileWarnings) # should be after project derective
 
 set(CMAKE_CXX_STANDARD 20)  # 20 version required
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,33 +64,6 @@ if(NIMBLEDB_SANITIZER STREQUAL "ubsan")
   add_compile_options(-fsanitize=undefined)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  option(NIMBLEDB_WITH_CLANG_TIDY "Check code with clang-tidy" ON)
-else()
-  option(NIMBLEDB_WITH_CLANG_TIDY "Check code with clang-tidy" OFF)
-endif()
-if(NIMBLEDB_WITH_CLANG_TIDY)
-  find_program(CLANG_TIDY_PATH NAMES
-      "clang-tidy-19" "clang-tidy-18" "clang-tidy-17" "clang-tidy")
-
-  if(CLANG_TIDY_PATH)
-    message(STATUS
-            "Using clang-tidy: ${CLANG_TIDY_PATH}.
-            The checks will be run during the build process.
-            See the .clang-tidy file in the root to configure the checks.")
-
-    set(USE_CLANG_TIDY ON)
-
-    # clang-tidy requires assertions to guide the analysis
-    # Note that NDEBUG is set implicitly by CMake for non-debug builds
-    add_definitions(-UNDEBUG)
-
-    # set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
-  else()
-    message(${RECONFIGURE_MESSAGE_LEVEL} "clang-tidy is not found")
-  endif()
-endif()
-
 # Build main library
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -109,8 +83,6 @@ endif()
 
 add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES})
 nimble_compile_warnings(${NIMBLEDB_LIB})
-set_target_properties(${NIMBLEDB_LIB}
-    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
 
 target_include_directories(${NIMBLEDB_LIB} PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
@@ -149,8 +121,6 @@ if(NIMBLEDB_WITH_TESTS)
 
     add_executable(${exename} ${sourcefile})
     nimble_compile_warnings(${exename})
-    set_target_properties(${exename}
-        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
 
     set_target_properties(${exename} PROPERTIES
         EXCLUDE_FROM_DEFAULT_BUILD_RELEASE 1

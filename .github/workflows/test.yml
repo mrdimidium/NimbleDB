@@ -10,7 +10,6 @@ jobs:
   linux:
     runs-on: "ubuntu-24.04"
     strategy:
-      fail-fast: false
       matrix:
         compiler: [gcc-14, llvm-20]
         library: [static, shared]
@@ -25,8 +24,8 @@ jobs:
         cmake: true
         ninja: true
         conan: true
-        clang-tidy: true
-        clang-format: true
+        clang-tidy: '20'
+        clang-format: '20'
 
     - name: Install libs
       run: sudo apt-get update && sudo apt-get install liburing-dev
