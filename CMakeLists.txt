@@ -94,7 +94,11 @@ endif()
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
-set(THIRDPARTY_LIBS "")
+find_package(Threads REQUIRED)
+list(APPEND THIRDPARTY_LIBS Threads::Threads)
+
+find_package(uring 2.0 REQUIRED)
+list(APPEND THIRDPARTY_LIBS uring::uring)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
 if(BUILD_SHARED_LIBS)

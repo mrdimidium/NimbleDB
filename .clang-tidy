@@ -3,11 +3,14 @@
 
 UseColor: true
 WarningsAsErrors: '*'
-HeaderFilterRegex: '^.*/(src|include|test|examples)/.*'
+HeaderFilterRegex: '^.*/(src|include)/.*'
 
 # Enable all checks + disable selected checks.
 Checks: [
   '*',
+
+  '-*-convert-member-functions-to-static',
+  '-*-easily-swappable-parameters',
 
   '-llvm-*', '-llvmlibc-*', '-linuxkernel-*',
   '-boost-*', '-abseil-*', '-altera-*',

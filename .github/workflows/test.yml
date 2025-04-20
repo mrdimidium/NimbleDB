@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc-14, llvm-19]
+        compiler: [gcc-14, llvm-20]
         library: [static, shared]
         sanitizer: ['', asan, ubsan]
     steps:
@@ -27,6 +27,9 @@ jobs:
         conan: true
         clang-tidy: true
         clang-format: true
+
+    - name: Install libs
+      run: sudo apt-get update && sudo apt-get install liburing-dev
 
     - name: Check code formatting
       if: startsWith(matrix.compiler, 'llvm')
