@@ -27,8 +27,8 @@ if(NOT CMAKE_BUILD_TYPE)
   else()
     set(DEFAULT_BUILD_TYPE "RelWithDebInfo")
   endif()
-  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING
-      "BUILD_TYPE is ${default_build_type}" FORCE)
+  set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}" CACHE STRING
+      "BUILD_TYPE is ${DEFAULT_BUILD_TYPE}" FORCE)
 endif()
 
 find_program(CCACHE_FOUND ccache)
@@ -63,42 +63,6 @@ if(NIMBLEDB_SANITIZER STREQUAL "ubsan")
   add_compile_options(-fsanitize=undefined)
 endif()
 
-# Build main library
-include_directories(${PROJECT_SOURCE_DIR})
-include_directories(${PROJECT_SOURCE_DIR}/include)
-
-option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
-if(BUILD_SHARED_LIBS)
-  set(NIMBLEDB_LIB nimble-shared${ARTIFACT_SUFFIX})
-else()
-  set(NIMBLEDB_LIB nimble${ARTIFACT_SUFFIX})
-endif()
-
-add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES})
-nimble_compile_warnings(${NIMBLEDB_LIB})
-
-target_include_directories(${NIMBLEDB_LIB} PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
-target_link_libraries(${NIMBLEDB_LIB} PRIVATE ${THIRDPARTY_LIBS})
-
-if(BUILD_SHARED_LIBS)
-  target_compile_definitions(${NIMBLEDB_LIB}
-    PUBLIC  "NIMBLEDB_SHARED"
-    PRIVATE "NIMBLEDB_SHARED_EXPORTS")
-
-  if(MSVC)
-    set_target_properties(${NIMBLEDB_STATIC_LIB} PROPERTIES
-      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${NIMBLEDB_STATIC_LIB}.pdb")
-    set_target_properties(${NIMBLEDB_LIB} PROPERTIES
-      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${NIMBLEDB_LIB}.pdb")
-  else()
-    set_target_properties(${NIMBLEDB_LIB} PROPERTIES LINKER_LANGUAGE CXX
-                          VERSION ${nimbledb_VERSION}
-                          SOVERSION ${nimbledb_VERSION_MAJOR}
-                          OUTPUT_NAME "nimbledb${ARTIFACT_SUFFIX}")
-  endif()
-endif()
-
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   option(NIMBLEDB_WITH_CLANG_TIDY "Check code with clang-tidy" ON)
 else()
@@ -118,11 +82,51 @@ if(NIMBLEDB_WITH_CLANG_TIDY)
 
     # clang-tidy requires assertions to guide the analysis
     # Note that NDEBUG is set implicitly by CMake for non-debug builds
-    set(COMPILER_FLAGS "${COMPILER_FLAGS} -UNDEBUG")
+    add_definitions(-UNDEBUG)
 
-    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    # set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
   else()
     message(${RECONFIGURE_MESSAGE_LEVEL} "clang-tidy is not found")
+  endif()
+endif()
+
+# Build main library
+include_directories(${PROJECT_SOURCE_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/include)
+
+set(THIRDPARTY_LIBS "")
+
+option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
+if(BUILD_SHARED_LIBS)
+  set(NIMBLEDB_LIB nimble-shared)
+else()
+  set(NIMBLEDB_LIB nimble)
+endif()
+
+add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES})
+nimble_compile_warnings(${NIMBLEDB_LIB})
+set_target_properties(${NIMBLEDB_LIB}
+    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
+
+target_include_directories(${NIMBLEDB_LIB} PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+target_link_libraries(${NIMBLEDB_LIB} PRIVATE ${THIRDPARTY_LIBS})
+
+if(BUILD_SHARED_LIBS)
+  target_compile_definitions(${NIMBLEDB_LIB}
+    PUBLIC  "NIMBLEDB_SHARED"
+    PRIVATE "NIMBLEDB_SHARED_EXPORTS")
+
+  if(MSVC)
+    set_target_properties(${NIMBLEDB_STATIC_LIB} PROPERTIES
+      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${NIMBLEDB_STATIC_LIB}.pdb")
+    set_target_properties(${NIMBLEDB_LIB} PROPERTIES
+      COMPILE_FLAGS "/Fd${CMAKE_CFG_INTDIR}/${NIMBLEDB_LIB}.pdb")
+  else()
+    set_target_properties(${NIMBLEDB_LIB} PROPERTIES LINKER_LANGUAGE CXX
+                          VERSION ${nimbledb_VERSION}
+                          SOVERSION ${nimbledb_VERSION_MAJOR}
+                          OUTPUT_NAME "nimbledb")
   endif()
 endif()
 
@@ -139,18 +143,20 @@ if(NIMBLEDB_WITH_TESTS)
   foreach(sourcefile ${NIMBLEDB_TESTS})
     get_filename_component(exename ${sourcefile} NAME_WE)
 
-    add_executable(${exename}${ARTIFACT_SUFFIX} ${sourcefile})
-    nimble_compile_warnings(${exename}${ARTIFACT_SUFFIX})
+    add_executable(${exename} ${sourcefile})
+    nimble_compile_warnings(${exename})
+    set_target_properties(${exename}
+        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
 
-    set_target_properties(${exename}${ARTIFACT_SUFFIX} PROPERTIES
+    set_target_properties(${exename} PROPERTIES
         EXCLUDE_FROM_DEFAULT_BUILD_RELEASE 1
         EXCLUDE_FROM_DEFAULT_BUILD_MINRELEASE 1
         EXCLUDE_FROM_DEFAULT_BUILD_RELWITHDEBINFO 1
-        OUTPUT_NAME ${exename}${ARTIFACT_SUFFIX})
-    target_link_libraries(${exename}${ARTIFACT_SUFFIX}
-        ${NIMBLEDB_LIB} ${THIRDPARTY_LIBS} GTest::gtest_main)
+        OUTPUT_NAME ${exename})
+    target_link_libraries(${exename}
+        PUBLIC ${NIMBLEDB_LIB} ${THIRDPARTY_LIBS} PRIVATE GTest::gtest_main)
 
     gtest_discover_tests(${exename} DISCOVERY_TIMEOUT 120)
-    add_dependencies(nimbledb_tests ${exename}${ARTIFACT_SUFFIX})
+    add_dependencies(nimbledb_tests ${exename})
   endforeach()
 endif()

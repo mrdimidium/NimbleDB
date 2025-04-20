@@ -25,6 +25,11 @@ function(nimble_compile_warnings target)
     endif()
   endif()
 
+  if(USE_CLANG_TIDY)
+    set_target_properties(${target}
+        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_PATH}")
+  endif()
+
   if(NIMBLEDB_FAIL_ON_WARNINGS)
     if(MSVC)
       target_compile_options(${target} PRIVATE /WX)

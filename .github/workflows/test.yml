@@ -38,12 +38,10 @@ jobs:
         CMAKE_GENERATOR: "Ninja Multi-Config"
         CMAKE_CONFIGURATION_TYPES: "Release;MinSizeRel;RelWithDebInfo;Debug"
       run: |-
-        [ "${{matrix.sharedlibs}}" == "shared" ] && build_shared="on" || build_shared="off"
         cmake -LAH -S. -B'build/' -DCMAKE_VERBOSE_MAKEFILE=ON \
-          -DBUILD_SHARED_LIBS="$build_shared" \
-          -DNIMBLEDB_WITH_TESTS=ON \
-          -DNIMBLEDB_WITH_CLANG_TIDY=ON \
-          -DNIMBLEDB_FAIL_ON_WARNINGS=ON \
+          -DBUILD_SHARED_LIBS="${{ matrix.library == 'shared' && 'ON' || 'OFF' }}" \
+          -DNIMBLEDB_WITH_CLANG_TIDY="${{ startsWith(matrix.compiler, 'llvm') && 'ON' || 'OFF' }}" \
+          -DNIMBLEDB_WITH_TESTS=ON -DNIMBLEDB_FAIL_ON_WARNINGS=ON \
           -DNIMBLEDB_SANITIZER="${{matrix.sanitizer}}"
 
     - name: Build & Test
