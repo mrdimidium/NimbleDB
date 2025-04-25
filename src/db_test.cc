@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may obtain a copy of the License at LICENSE file in the root.
 
-#include "nimbledb/nimbledb.h"
+#include "nimbledb/db.h"
 
 #include <gtest/gtest.h>
 
@@ -17,16 +17,13 @@
 #include <string_view>
 #include <system_error>
 
-namespace {
+#include "nimbledb/base.h"
+#include "nimbledb/system.h"
 
-using OS = nimbledb::OS;
-using File = nimbledb::File;
-using Status = nimbledb::Status;
+namespace NIMBLEDB_NAMESPACE {
 
 constexpr int kBufferSize = 20;
 constexpr char const* kTestFilePath = "test_io_write_read_close";
-
-}  // namespace
 
 // NOLINTBEGIN(*-function-cognitive-complexity)
 class OSTest : public ::testing::Test {
@@ -97,30 +94,30 @@ TEST_F(OSTest, CanOpenReadWrite) {
   EXPECT_EQ(dst_buf_, src_buf_);
 }
 
-class TestDB : public nimbledb::DB {};
+class TestDB : public DB {};
 
 TEST(DB, Smoke) {
   {
-    std::shared_ptr<nimbledb::DB> db;
-    auto status = nimbledb::DB::Open("_db_test_smoke.bin", {}, &db);
+    std::shared_ptr<DB> db;
+    auto status = DB::Open("_db_test_smoke.bin", {}, &db);
     ASSERT_TRUE(status.IsOk());
 
     db->Put("Mercury", "330.11",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Venus", "4_867.5",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Earth", "5_972.4",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Mars", "641.71",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Jupiter", "1_898_187",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Saturn", "568_317",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Uranus", "86_813",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     db->Put("Neptune", "102_413",
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     // Wait, where is Pluto? So Pluto is not a planet.
 
     status = db->Close();
@@ -128,15 +125,15 @@ TEST(DB, Smoke) {
   }
 
   {
-    std::shared_ptr<nimbledb::DB> db;
-    auto status = nimbledb::DB::Open("_db_test_smoke.bin", {}, &db);
+    std::shared_ptr<DB> db;
+    auto status = DB::Open("_db_test_smoke.bin", {}, &db);
     ASSERT_TRUE(status.IsOk());
 
-    db->Get("Earth", [](const nimbledb::Status& st,
-                        const std::optional<std::string>& value) {
-      EXPECT_TRUE(st.IsOk());
-      EXPECT_EQ(*value, "5_972.4");
-    });
+    db->Get("Earth",
+            [](const Status& st, const std::optional<std::string>& value) {
+              EXPECT_TRUE(st.IsOk());
+              EXPECT_EQ(*value, "5_972.4");
+            });
 
     status = db->Close();
     ASSERT_TRUE(status.IsOk());
@@ -203,20 +200,20 @@ TEST(DB, SomeTreeLevels) {
           "Eos", "Aegina", "Leukothea", "Menoetius", "Isis", "Klotho",
           "Troilus"};
 
-  std::shared_ptr<nimbledb::DB> db;
-  auto status = nimbledb::DB::Open("_db_test_sometreelevels.bin", {}, &db);
+  std::shared_ptr<DB> db;
+  auto status = DB::Open("_db_test_sometreelevels.bin", {}, &db);
   ASSERT_TRUE(status.IsOk()) << status.ToString();
 
   int64_t index = 0;
   for (const auto& object : solar_system_objects) {
     db->Put(object, std::to_string(index),
-            [](const nimbledb::Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
+            [](const Status& st, bool) { EXPECT_TRUE(st.IsOk()); });
     index += 1;
   }
 
   index = 0;
   for (const auto& object : solar_system_objects) {
-    db->Get(object, [index, object](const nimbledb::Status& st,
+    db->Get(object, [index, object](const Status& st,
                                     const std::optional<std::string>& value) {
       EXPECT_TRUE(st.IsOk());
       EXPECT_EQ(*value, std::to_string(index)) << object << ": " << index;
@@ -228,3 +225,5 @@ TEST(DB, SomeTreeLevels) {
   ASSERT_TRUE(status.IsOk());
 }
 // NOLINTEND(*-function-cognitive-complexity)
+
+}  // namespace NIMBLEDB_NAMESPACE

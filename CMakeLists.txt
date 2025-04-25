@@ -18,8 +18,19 @@ include(NimbleCompileWarnings) # should be after project derective
 set(CMAKE_CXX_STANDARD 20)  # 20 version required
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(NIMBLEDB_FILES "src/nimbledb.cc")
-set(NIMBLEDB_TESTS "src/nimbledb_test.cc")
+set(NIMBLEDB_HEADERS
+  "include/nimbledb/base.h"
+  "include/nimbledb/db.h"
+  "include/nimbledb/system.h"
+)
+set(NIMBLEDB_FILES
+  "src/base.cc"
+  "src/db.cc"
+  "src/system.cc"
+)
+set(NIMBLEDB_TESTS
+  "src/db_test.cc"
+)
 
 if(NOT CMAKE_BUILD_TYPE)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
@@ -81,7 +92,7 @@ else()
   set(NIMBLEDB_LIB nimble)
 endif()
 
-add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES})
+add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES} ${NIMBLEDB_HEADERS})
 nimble_compile_warnings(${NIMBLEDB_LIB})
 
 target_include_directories(${NIMBLEDB_LIB} PUBLIC

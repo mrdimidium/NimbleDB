@@ -2,15 +2,13 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may obtain a copy of the License at LICENSE file in the root.
 
-#include "nimbledb/nimbledb.h"
+#include "nimbledb/db.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -31,44 +29,10 @@
 #include <type_traits>
 #include <utility>
 
-#if defined(NIMBLEDB_OS_WINDOWS)
-  #include <io.h>
-  #include <windows.h>
-
-  // Use `open` instead of `_open` on Windows
-  // https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4996
-  #pragma warning(disable : 4996)
-#else
-  #include <sys/types.h>
-  #include <unistd.h>
-#endif
+#include "nimbledb/base.h"
+#include "nimbledb/system.h"
 
 namespace {
-
-#if !(defined(_WIN32) && (defined(__MINGW32__) || defined(_MSC_VER)))
-
-// XSI-compatible strerror_r
-[[maybe_unused]] std::string invoke_strerror_r(
-    int (*strerror_r)(int, char*, size_t), int err, char* buf, size_t blen) {
-  const int r = strerror_r(err, buf, blen);
-
-  // OSX/FreeBSD use EINVAL and Linux uses -1 so just check for non-zero
-  if (r != 0) {
-    return std::format("Unknown error {} (strerror_r failed with error {})",
-                       err, errno);
-  }
-
-  return buf;
-}
-
-// GNU strerror_r
-[[maybe_unused]] std::string invoke_strerror_r(
-    char* (*strerror_r)(int, char*, size_t), int err, char* buf, size_t blen) {
-  return strerror_r(err, buf, blen);
-}
-
-#endif  // !(defined(NIMBLEDB_OS_WINDOWS) && (defined(__MINGW32__) ||
-        // defined(_MSC_VER)))
 
 // The size of the b-tree page on disk. Must be a multiple of 4KB (the minimum
 // data block size on most systems)
@@ -83,287 +47,7 @@ constexpr size_t btree_maxsize_value = 512;
 
 }  // namespace
 
-namespace nimbledb {
-
-// Based on folly/string.cpp:
-// https://github.com/facebook/folly/blob/58b6c5/folly/String.cpp#L494
-//
-// There are two variants of `strerror_r` function, one returns `int`, and
-// another returns `char*`. Selecting proper version using preprocessor macros
-// portably is extremely hard.
-//
-// For example, on Android function signature depends on `__USE_GNU` and
-// `__ANDROID_API__` macros (https://git.io/fjBBE).
-//
-// We are using C++ overloading trick: we pass a pointer of
-// `strerror_r` to `invoke_strerror_r` function, and C++ compiler
-// selects proper function.
-std::string Status::ErrnoToString(int err) {
-  thread_local static std::array<char, 1024> buf{'\0'};
-
-  // https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man3/strerror_r.3.html
-  // http://www.kernel.org/doc/man-pages/online/pages/man3/strerror.3.html
-#if defined(_WIN32) && (defined(__MINGW32__) || defined(_MSC_VER))
-  // mingw64 has no strerror_r, but Windows has strerror_s, which C11 added as
-  // well. So maybe we should use this across all platforms (together with
-  // strerrorlen_s). Note strerror_r and _s have swapped args.
-  int r = strerror_s(buf.data(), buf.size(), err);
-  if (r != 0) {
-    return std::format("Unknown error {} (strerror_r failed with error {})",
-                       err, errno);
-  }
-
-  return buf.data();
-#else
-  // NOLINTNEXTLINE(misc-include-cleaner), it's a clinag-tidy bug
-  return invoke_strerror_r(strerror_r, err, buf.data(), buf.size());
-#endif
-}
-
-Status::Status(Code _code, const std::string& msg, const std::string& msg2,
-               Severity sev)
-    : code_(_code), severity_(sev) {
-  assert(_code != kMaxCode);
-
-  if (!msg2.empty()) {
-    state_ = msg + ": " + msg2;
-  } else {
-    state_ = msg;
-  }
-}
-
-std::string Status::ToString() const {
-  MarkChecked();
-
-  std::string result;
-  switch (code_) {
-    case kOk:
-      return "OK";
-    case kNoMemory:
-      return "Out of memory";
-    default: {
-      // This should not happen since `code_` should be a valid non-`kMaxCode`
-      // member of the `Code` enum. The above switch-statement should have had a
-      // case assigning `type` to a corresponding string.
-      assert(false);
-      result = std::format("Unknown code({}): ", static_cast<int>(code()));
-    }
-  }
-
-  return result + (!state_.empty() ? state_ : "(empty message)");
-}
-
-int File::Flags::GetMask() const {
-  unsigned mask = 0;
-
-  // NOLINTBEGIN(*-braces-around-statements)
-  if (read && write) {
-    mask |= O_RDWR;
-  } else {
-    if (read) mask |= O_RDONLY;
-    if (write) mask |= O_WRONLY;
-  }
-
-  if (excl) mask |= O_EXCL;
-  if (creat) mask |= O_CREAT;
-  if (trunc) mask |= O_TRUNC;
-  if (append) mask |= O_APPEND;
-
-#if defined(NIMBLEDB_OS_WINDOWS)
-  if (cloexec) mask |= O_NOINHERIT;
-#else
-  if (cloexec) mask |= O_CLOEXEC;
-#endif
-
-  // For LINUX, the O_DIRECT flag has to be included.
-  //
-  // For MacOS O_DIRECT isn't available. Instead, fcntl(fd, F_NOCACHE, 1)
-  // looks to be the canonical solution where fd is the file descriptor of the
-  // file.
-  //
-  // For Windows, there is a flag called FILE_FLAG_NO_BUFFERING as the
-  // counterpart in Windows of O_DIRECT.
-#if defined(NIMBLEDB_OS_WINDOWS)
-  if (direct) mask |= FILE_FLAG_NO_BUFFERING;
-#elif defined(NIMBLEDB_OS_LINUX)
-  if (direct) mask |= O_DIRECT;
-#endif
-  // NOLINTEND(*-braces-around-statements)
-
-  assert((void("Flags must include access modes"), read || write));
-
-  assert((void("Mutually exclusive flags: `creat`, `excl`"), !creat || !excl));
-
-  assert(
-      (void("Mutually exclusive flags: `trunc`, `append`"), !trunc || !append));
-
-  return static_cast<int>(mask);
-}
-
-Status File::GetFileSize(int64_t* size) const {
-  assert(!closed_);
-
-  struct stat stat_buf{};
-  if (fstat(fd_, &stat_buf) != 0) {
-    return Status::IOError("Couldn't get datafile size",
-                           Status::ErrnoToString());
-  }
-  *size = stat_buf.st_size;
-
-  return Status::Ok();
-}
-
-Status File::Close() {
-  closed_ = true;
-
-  if (!closed_) {
-    if (const int rc = close(fd_); rc != 0) {
-      return Status::IOError("couldn't close file", Status::ErrnoToString());
-    }
-  }
-
-  return Status::Ok();
-}
-
-void File::Read(RWBuffer buffer, off_t offset,
-                const Callback<>& callback) const {
-  assert(!closed_);
-
-  auto new_offset = lseek(fd_, offset, SEEK_SET);
-  if (new_offset < 0) {
-    callback(Status::IOError("couldn't lseek to file position",
-                             Status::ErrnoToString()));
-    return;
-  }
-
-  auto bytes = read(fd_, buffer.data(), buffer.size());
-  if (bytes < 0) {
-    callback(
-        Status::IOError("couldn't read from file", Status::ErrnoToString()));
-    return;
-  }
-
-  if (static_cast<size_t>(bytes) != buffer.size()) {
-    callback(Status::IOError("couldn't read all data"));
-    return;
-  }
-
-  callback(Status::Ok());
-}
-
-void File::Write(ROBuffer buffer, off_t offset,
-                 const Callback<>& callback) const {
-  assert(!closed_);
-
-  auto new_offset = lseek(fd_, offset, SEEK_SET);
-  if (new_offset < 0) {
-    callback(Status::IOError("couldn't lseek to file position",
-                             Status::ErrnoToString()));
-    return;
-  }
-
-  auto bytes = write(fd_, buffer.data(), buffer.size());
-  if (bytes < 0) {
-    callback(
-        Status::IOError("couldn't write to file", Status::ErrnoToString()));
-    return;
-  }
-
-  if (static_cast<size_t>(bytes) != buffer.size()) {
-    callback(Status::IOError("couldn't write all data"));
-    return;
-  }
-
-  callback(Status::Ok());
-}
-
-void File::Sync(SyncMode mode, const Callback<>& callback) const {
-  assert(!closed_);
-
-  int rc = -1;
-  switch (mode) {
-    case SyncMode::kFull:
-#ifdef F_FULLFSYNC
-      // If the FULLFSYNC failed, fall back to attempting an fsync().
-      // It shouldn't be possible for fullfsync to fail on the local
-      // file system (on OSX), so failure indicates that FULLFSYNC
-      // isn't supported for this file system. So, attempt an fsync
-      // and (for now) ignore the overhead of a superfluous fcntl call.
-      if (fcntl(fd_, F_FULLFSYNC, 0) == 0) {
-        break;
-      }
-      [[fallthrough]];
-#endif
-
-    case SyncMode::kNormal:
-#if defined(NIMBLEDB_OS_WINDOWS)
-      rc = _commit(fd_);
-#else
-      rc = fsync(fd_);
-#endif
-      break;
-
-    case SyncMode::kDataOnly:
-#if defined(NIMBLEDB_OS_DARWIN)
-      // fdatasync() on HFS+ doesn't yet flush the file size if it changed
-      // correctly so currently we default to the macro that redefines fdatasync
-      // to fsync
-      rc = fsync(fd_);
-#elif defined(NIMBLEDB_OS_WINDOWS)
-      // It would be better to use FLUSH_FLAGS_FILE_DATA_SYNC_ONLY for this
-      rc = _commit(fd_);
-#else
-      rc = fdatasync(fd_);
-#endif
-      break;
-  }
-
-  if (rc < 0) {
-    callback(Status::IOError("couldn't fsync file", Status::ErrnoToString()));
-    return;
-  }
-
-  callback(Status::Ok());
-}
-
-// static
-Status OS::Create(std::unique_ptr<OS>* ioptr) {
-  OS* ptr = new (std::nothrow) OS;
-  if (ptr == nullptr) {
-    return Status::NoMemory();
-  }
-
-  ioptr->reset(ptr);
-  return Status::Ok();
-}
-
-OS::OS() = default;
-OS::~OS() {
-  if (!closed_) {
-    std::ignore = Close().state();
-  }
-}
-
-Status OS::OpenDatafile(std::string_view file_path, File::Flags flags,
-                        std::unique_ptr<File>* file_ptr) {
-  const int fd = open(std::string(file_path).c_str(), flags.GetMask(), 0644);
-  if (fd < 0) {
-    return Status::IOError("couldn't open file", Status::ErrnoToString());
-  }
-
-#if defined(NIMBLEDB_OS_DARWIN)
-  if (flags.direct) {
-    int result = fcntl(fd, F_NOCACHE, 1);
-    if (result < 0) {
-      return Status::IOError("failed to enable direct io for file",
-                             Status::ErrnoToString());
-    }
-  }
-#endif
-
-  *file_ptr = std::make_unique<File>(file_path, fd);
-  return Status::Ok();
-}
+namespace NIMBLEDB_NAMESPACE {
 
 // NOLINTBEGIN(*-avoid-c-arrays)
 struct alignas(8) DB::BTreeNodeKey {
@@ -745,11 +429,12 @@ void DB::NodeSplit(const std::shared_ptr<BTreeNode>& x, NodeId child_id) {
   x->size += 1;
 }
 
-#if !defined(NIMBLEDB_OS_WINDOWS)
-  #define BOLD(x) "\e[1m" x "\e[0m"
-#else
-  #define BOLD(x) x
-#endif
+#ifndef NDEBUG
+  #if !defined(NIMBLEDB_OS_WINDOWS)
+    #define BOLD(x) "\e[1m" x "\e[0m"
+  #else
+    #define BOLD(x) x
+  #endif
 
 void DB::DebugRenderBTree(std::ostream& in) {
   in << "\n\n===================\n";
@@ -807,4 +492,6 @@ void DB::DebugRenderBTree(std::ostream& in) {
   in << "\n===================\n\n";
 }
 
-}  // namespace nimbledb
+#endif  // !DEBUG
+
+}  // namespace NIMBLEDB_NAMESPACE

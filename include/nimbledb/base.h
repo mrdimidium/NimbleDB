@@ -2,16 +2,25 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may obtain a copy of the License at LICENSE file in the root.
 
-#ifndef NIMBLEDB_NIMBLEDB_H_
-#define NIMBLEDB_NIMBLEDB_H_
+#ifndef NIMBLEDB_BASE_H_
+#define NIMBLEDB_BASE_H_
 
 #include <functional>
-#include <map>
-#include <memory>
-#include <optional>
 #include <span>
 #include <string>
-#include <string_view>
+
+#ifndef NDEBUG
+  #define NIMBLEDB_ASSERT_STATUS_CHECKED
+#endif
+
+#ifdef NIMBLEDB_ASSERT_STATUS_CHECKED
+  #include <format>
+  #include <iostream>
+
+  #if __cpp_lib_stacktrace >= 202011L
+    #include <stacktrace>
+  #endif
+#endif
 
 #if defined(__linux__)
   // Developer:     Open source
@@ -73,20 +82,16 @@
   #define NIMBLEDB_EXPORT
 #endif
 
-#ifndef NDEBUG
-  #define NIMBLEDB_ASSERT_STATUS_CHECKED
+// For testing purposes
+#if NIMBLEDB_NAMESPACE == 42
+  #undef NIBMLEDB_NAMESPACE
 #endif
 
-#ifdef NIMBLEDB_ASSERT_STATUS_CHECKED
-  #include <format>
-  #include <iostream>
-
-  #if __cpp_lib_stacktrace >= 202011L
-    #include <stacktrace>
-  #endif
+#ifndef NIMBLEDB_NAMESPACE
+  #define nimbledb
 #endif
 
-namespace nimbledb {
+namespace NIMBLEDB_NAMESPACE {
 
 // A Status wrap the result of an operation.
 // It may indicate success or an error with an associated error message.
@@ -271,189 +276,6 @@ using Callback = std::function<void(Status, Args...)>;
 using RWBuffer = std::span<std::byte>;
 using ROBuffer = std::span<const std::byte>;
 
-// Cross-platform asynchronous file interface.
-//
-// This class is not thread-safe and doesn't own the read/write buffers.
-// You must keep the buffers valid from the method call until they return from
-// the callback.
-class NIMBLEDB_EXPORT File {
- public:
-  struct DeviceAttrs {
-    size_t sector_size;
-  };
+}  // namespace NIMBLEDB_NAMESPACE
 
-  // Cross-Platform options for opening/creating a file.
-  // Some flags may be ignored depending on the system.
-  struct Flags {
-    // Access modes for read, write or both.
-    bool read = true, write = true;
-
-    bool excl = false, creat = false;
-    bool trunc = false, append = false;
-
-    bool cloexec = false;
-    bool direct = false;
-
-    [[nodiscard]] int GetMask() const;
-  };
-
-  enum class DirectIO : uint8_t { kRequired, kOptional, kDisabled };
-  enum class SyncMode : uint8_t { kFull, kNormal, kDataOnly };
-
-  explicit File(std::string_view filename, int fd = -1)
-      : filename_(filename), fd_(fd) {}
-
-  ~File() {
-    if (!closed_) {
-      std::ignore = Close();
-    }
-  }
-
-  File(const File&) = delete;
-  File(File&&) = delete;
-  File& operator=(const File&) = delete;
-  File& operator=(File&&) = delete;
-
-  Status GetFileSize(int64_t* size_ptr) const;
-  Status GetDeviceAttrs(DeviceAttrs* attrs_ptr) const;
-
-  void Read(RWBuffer buffer, off_t offset, const Callback<>& callback) const;
-  void Write(ROBuffer buffer, off_t offset, const Callback<>& callback) const;
-
-  void Sync(SyncMode mode, const Callback<>& callback) const;
-  void Truncate(int64_t size, const Callback<>& callback) const;
-
-  Status Close();
-
- protected:
-  const std::string filename_;
-
-  bool closed_ = false;
-  const int fd_ = -1;
-
-  static size_t BufferLimit(size_t buffer_len) {
-#if defined(NIMBLEDB_OS_LINUX)
-    // Linux limits how much may be written in a `pwrite()/pread()` call, which
-    // is `0x7ffff000` on both 64-bit and 32-bit systems, due to using a signed
-    // C int as the return value, as well as stuffing the errno codes into the
-    // last `4096` values
-    constexpr size_t kLimit = 0x7ffff000;
-#elif defined(NIMBLEDB_OS_DARWIN)
-    // Darwin can write `0x7fffffff` bytes, more than that returns `EINVAL`
-    constexpr size_t kLimit = std::numeric_limits<int32_t>::max();
-#else
-    // The corresponding POSIX limit
-    constexpr size_t kLimit = std::numeric_limits<size_t>::max();
-#endif
-
-    return std::min(kLimit, buffer_len);
-  }
-};
-
-// Interface between the NimbleDB and the underlying operating system.
-//
-// All methods accept a callback so that the implementation can
-// rely on the async kernel API (e.g. io_uring or kqueue), but the moment
-// of calling the callback isn't defined (for a naive implementation it can
-// happen immediately with the thread blocking).
-//
-// This class does not implement any caching, you should build your own page
-// cache higher up.
-class NIMBLEDB_EXPORT OS {
- public:
-  OS(OS&&) = delete;
-  OS(const OS&) = delete;
-  OS& operator=(OS&&) = delete;
-  OS& operator=(const OS&) = delete;
-
-  virtual ~OS();
-
-  static Status Create(std::unique_ptr<OS>* ioptr);
-
-  // Pass all queued submissions to the kernel and peek for completions.
-  Status Tick() {  // NOLINT(*-convert-member-functions-to-static)
-    // no-op, stil unimplemented
-    return Status::Ok();
-  }
-
-  Status Close() {  // NOLINT(*-convert-member-functions-to-static)
-    // no-op, stil unimplemented
-    closed_ = true;
-    return Status::Ok();
-  }
-
-  Status OpenDatafile(std::string_view file_path, File::Flags flags,
-                      std::unique_ptr<File>* file_ptr);
-
- protected:
-  explicit OS();
-
-  bool closed_ = false;
-};
-
-struct NIMBLEDB_EXPORT Options {};
-
-class NIMBLEDB_EXPORT DB {
- public:
-  // No copying & moving allowed
-  DB(DB&) = delete;
-  DB(DB&&) = delete;
-  DB& operator=(DB&&) = delete;
-  void operator=(const DB&) = delete;
-
-  virtual ~DB();
-
-  // Open database, return shared_ptr to DB instance
-  static Status Open(std::string_view filename, const Options& options,
-                     std::shared_ptr<DB>* dbptr);
-
-  // Synchronizes any unfinished state to disk and graceful close database.
-  // Use this method instead of the implicit destructor to handle errors.
-  Status Close();
-
-  // Find key in database, return std::nullopt if not found
-  void Get(std::string_view key,
-           const Callback<std::optional<std::string>>& callback);
-
-  // Add key to database, overrite if key exists
-  void Put(std::string_view key, std::string_view value,
-           const Callback<bool /* rewritten */>& callback);
-
-  // Delete key from database. Returns succes if key not found.
-  void Delete(std::string_view key, const Callback<bool /* found */>& callback);
-
-  // For debug purposes, return a graphical representation of the tree
-  void DebugRenderBTree(std::ostream& in);
-
- protected:
-  struct BTreeNode;
-  struct BTreeNodeKey;
-  struct BTreeNodeVal;
-
-  using NodeId = int64_t;
-  using NodeType = enum : uint8_t { kInterior, kLeaf };
-
-  DB(Options options, std::unique_ptr<OS> os, std::unique_ptr<File> datafile);
-
-  void NodeSplit(const std::shared_ptr<BTreeNode>& x, NodeId child_id);
-  void NodeInsert(NodeId node_id, std::string_view k, std::string_view v);
-
-  auto AddNode(NodeType page_type) -> std::shared_ptr<BTreeNode>;
-  auto GetNode(NodeId id) -> std::shared_ptr<BTreeNode>;
-  Status Sync();
-
-  bool closed_ = false;
-
-  const Options options_;
-
-  std::unique_ptr<OS> os_ = nullptr;
-  std::unique_ptr<File> datafile_ = nullptr;
-
-  NodeId pages_ = 0;
-  NodeId root_id_ = 0;
-  std::map<NodeId, std::shared_ptr<BTreeNode>> nodes_;
-};
-
-}  // namespace nimbledb
-
-#endif  // NIMBLEDB_NIMBLEDB_H_
+#endif  // NIMBLEDB_BASE_H_
