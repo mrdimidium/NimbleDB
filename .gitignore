@@ -27,4 +27,4 @@ cmake-build-*
 
 # clangd cache
 /.cache
-/compile_commands.json
+**/compile_commands.json
