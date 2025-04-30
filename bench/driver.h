@@ -43,6 +43,10 @@ Driver *driver_debug();
 Driver *driver_lmdb();
 #endif
 
+#if HAVE_ROCKSDB
+Driver *driver_rocksdb();
+#endif
+
 inline Driver *Driver::GetDriverFor(std::string_view name) {
   if (name == driver_debug()->GetName()) {
     return driver_debug();
@@ -51,6 +55,12 @@ inline Driver *Driver::GetDriverFor(std::string_view name) {
 #if HAVE_LMDB
   if (name == driver_lmdb()->GetName()) {
     return driver_lmdb();
+  }
+#endif
+
+#if HAVE_ROCKSDB
+  if (name == driver_rocksdb()->GetName()) {
+    return driver_rocksdb();
   }
 #endif
 
@@ -70,6 +80,10 @@ inline std::string Driver::Supported() {
 
 #if HAVE_LMDB
   setup_driver(driver_lmdb()->GetName());
+#endif
+
+#if HAVE_ROCKSDB
+  setup_driver(driver_rocksdb()->GetName());
 #endif
 
   return list;

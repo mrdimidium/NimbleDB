@@ -72,7 +72,7 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
       break;
     default:
       Log("error: {}(): unsupported syncmode {}", __func__,
-          BenchSyncModeToString(config_->syncmode));
+          to_string(config_->syncmode));
       return -1;
   }
 
@@ -83,7 +83,7 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
     case IA_WAL_ON:
     default:
       Log("error: {}(): unsupported walmode {}", __func__,
-          BenchWalModeToString(config_->walmode));
+          to_string(config_->walmode));
       return -1;
   }
 
@@ -170,7 +170,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
       }
       rc = mdb_txn_begin(env, nullptr, 0, &ctx->txn);
       if (rc != MDB_SUCCESS) {
-        Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
         return rc;
       }
@@ -188,7 +188,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
       if (ctx->txn == nullptr) {
         rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &ctx->txn);
         if (rc != MDB_SUCCESS) {
-          Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+          Log("error: {}, {}, {} ({})", __func__, to_string(step),
               mdb_strerror(rc), rc);
           return rc;
         }
@@ -205,7 +205,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
         if (ctx->cursor == nullptr) {
           rc = mdb_cursor_open(ctx->txn, dbi, &ctx->cursor);
           if (rc != MDB_SUCCESS) {
-            Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+            Log("error: {}, {}, {} ({})", __func__, to_string(step),
                 mdb_strerror(rc), rc);
             return rc;
           }
@@ -236,7 +236,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       v.mv_size = kv->value.size();
       rc = mdb_put(ctx->txn, dbi, &k, &v, 0);
       if (rc != MDB_SUCCESS) {
-        Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
         return -1;
       }
@@ -249,7 +249,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       if (rc == MDB_NOTFOUND) {
         rc = ENOENT;
       } else if (rc != MDB_SUCCESS) {
-        Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
         return -1;
       }
@@ -265,7 +265,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
         kv->value = std::span<char>();
         rc = ENOENT;
       } else {
-        Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
         return -1;
       }
@@ -277,7 +277,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       rc = mdb_get(ctx->txn, dbi, &k, &v);
       if (rc != MDB_SUCCESS) {
         if (rc != MDB_NOTFOUND) {
-          Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+          Log("error: {}, {}, {} ({})", __func__, to_string(step),
               mdb_strerror(rc), rc);
           return -1;
         }
@@ -308,7 +308,7 @@ int DriverLmdb::Done(Context ctxptr, BenchType step) {
         mdb_txn_abort(ctx->txn);
         ctx->txn = nullptr;
 
-        Log("error: {}, {}, {} ({})", __func__, BenchTypeToString(step),
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
         return -1;
       }

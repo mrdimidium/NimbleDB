@@ -20,7 +20,7 @@
 
 #include "base.h"
 
-std::string_view BenchTypeToString(BenchType b) {
+std::string_view to_string(BenchType b) {
   switch (b) {
     case IA_SET:
       return "set";
@@ -61,7 +61,7 @@ BenchType BenchTypeFromString(const std::string_view &name) {
   return IA_MAX;
 }
 
-std::string_view BenchSyncModeToString(BenchSyncMode syncmode) {
+std::string_view to_string(BenchSyncMode syncmode) {
   switch (syncmode) {
     case IA_SYNC:
       return "sync";
@@ -74,19 +74,19 @@ std::string_view BenchSyncModeToString(BenchSyncMode syncmode) {
   }
 }
 std::optional<BenchSyncMode> BenchSyncModeFromString(const std::string &str) {
-  if (str == BenchSyncModeToString(IA_SYNC)) {
+  if (str == to_string(IA_SYNC)) {
     return IA_SYNC;
   }
-  if (str == BenchSyncModeToString(IA_LAZY)) {
+  if (str == to_string(IA_LAZY)) {
     return IA_LAZY;
   }
-  if (str == BenchSyncModeToString(IA_NOSYNC)) {
+  if (str == to_string(IA_NOSYNC)) {
     return IA_NOSYNC;
   }
   return std::nullopt;
 }
 
-std::string_view BenchWalModeToString(BenchWalMode walmode) {
+std::string_view to_string(BenchWalMode walmode) {
   switch (walmode) {
     case IA_WAL_INDEF:
       return "indef";
@@ -99,13 +99,13 @@ std::string_view BenchWalModeToString(BenchWalMode walmode) {
   }
 }
 std::optional<BenchWalMode> BenchWalModeFromString(const std::string &str) {
-  if (str == BenchWalModeToString(IA_WAL_INDEF)) {
+  if (str == to_string(IA_WAL_INDEF)) {
     return IA_WAL_INDEF;
   }
-  if (str == BenchWalModeToString(IA_WAL_ON)) {
+  if (str == to_string(IA_WAL_ON)) {
     return IA_WAL_ON;
   }
-  if (str == BenchWalModeToString(IA_WAL_OFF)) {
+  if (str == to_string(IA_WAL_OFF)) {
     return IA_WAL_OFF;
   }
   return std::nullopt;
@@ -115,12 +115,12 @@ void Config::Print() const {
   Log("Configuration:");
   Log("\tdatabase   = {}", driver_name);
   Log("\tdirname    = {}", dirname);
-  Log("\tbenchmarks = {}", Join(benchmarks, BenchTypeToString));
+  Log("\tbenchmarks = {}", Join(benchmarks));
   Log("");
   Log("\toperations = {}", count);
   Log("");
-  Log("\tWAL mode   = {}", BenchWalModeToString(walmode));
-  Log("\tsync mode  = {}", BenchSyncModeToString(syncmode));
+  Log("\tWAL mode   = {}", to_string(walmode));
+  Log("\tsync mode  = {}", to_string(syncmode));
   Log("");
   Log("\tkey size   = {}", key_size);
   Log("\tvalue size = {}", value_size);

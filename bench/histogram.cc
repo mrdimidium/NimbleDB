@@ -58,8 +58,8 @@ std::string snpf_lat(Time ns) {
 }  // namespace
 
 Bucket::Bucket(Histogram *registry, bool is_worker)
-    : is_worker_(is_worker),
-      registry_(registry),
+    : registry_(registry),
+      is_worker_(is_worker),
       merge_evo_(registry_->merge_evo_) {
   if (is_worker) {
     registry_->workers_active_ += 1;
@@ -77,7 +77,7 @@ Bucket::~Bucket() {
 }
 
 void Bucket::Reset(BenchType bench) {
-  int merge_evo = merge_evo;
+  int merge_evo = merge_evo_;
 
   enabled_ = true;
   bench_ = bench;
@@ -179,7 +179,8 @@ int Histogram::Summarize(Time now) {
   }
 
   if (workers_active_ != workers_merged_) {
-    Fatal(__FUNCTION__);
+    Fatal("[{}]: not all workers finished: active={:d}, merged={}",
+          __FUNCTION__, workers_active_.load(), workers_merged_.load());
   }
 
   if (checkpoint_ns_ == starting_point_) {
@@ -196,7 +197,7 @@ int Histogram::Summarize(Time now) {
     Log("{}", line);
   }
 
-  long double timepoint = static_cast<long double>(now - starting_point_) / S;
+  auto timepoint = static_cast<long double>(now - starting_point_) / S;
   std::string line = std::format("{:9.3f}", timepoint);
 
   Time wall_ns = now - checkpoint_ns_;
@@ -208,16 +209,16 @@ int Histogram::Summarize(Time now) {
       continue;
     }
 
-    std::string name{BenchTypeToString(h.bench_)};
+    std::string name{to_string(h.bench_)};
     uintmax_t n = h.acc_.n - h.last_.n;
     uintmax_t vol = h.acc_.volume_sum - h.last_.volume_sum;
 
     line += std::format(" | {:>5}:", name);
     if (n != 0) {
-      Time rms = static_cast<Time>(
-          sqrt(static_cast<double>(h.acc_.latency_sum_square -
-                                   h.last_.latency_sum_square) /
-               static_cast<double>(n)));
+      auto rms = static_cast<Time>(
+          sqrtl(static_cast<long double>(h.acc_.latency_sum_square -
+                                         h.last_.latency_sum_square) /
+                n));
       Time avg = (h.acc_.latency_sum_ns - h.last_.latency_sum_ns) / n;
       auto rps = static_cast<long double>(n) / wall;
       auto bps = static_cast<long double>(vol) / wall;
@@ -259,8 +260,7 @@ void Histogram::MergeLocked(Bucket &src, Time now) {
     dst.acc_.volume_sum += src.acc_.volume_sum - src.last_.volume_sum;
     dst.acc_.n += src.acc_.n - src.last_.n;
 
-    int i;
-    for (i = 0; i < kHistogramCount; i++) {
+    for (size_t i = 0; i < kHistogramCount; i++) {
       dst.buckets_[i] += src.buckets_[i];
     }
 
@@ -289,7 +289,7 @@ void Histogram::Print() {
       continue;
     }
 
-    std::string name{BenchTypeToString(h.bench_)};
+    std::string name{to_string(h.bench_)};
     Log("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> "
         "{}({})",
         name, h.acc_.n);
@@ -322,10 +322,12 @@ void Histogram::Print() {
     Log("min latency: {:>9}/op", snpf_lat(h.whole_min_));
     Log("avg latency: {:>9}/op", snpf_lat(h.acc_.latency_sum_ns / h.acc_.n));
     Log("rms latency: {:>9}/op",
-        snpf_lat(sqrt(h.acc_.latency_sum_square / h.acc_.n)));
+        snpf_lat(static_cast<Time>(sqrtl(
+            static_cast<long double>(h.acc_.latency_sum_square) / h.acc_.n))));
     Log("max latency: {:>9}/op", snpf_lat(h.whole_max_));
 
-    auto wall = static_cast<double>(h.end_ns_ - h.begin_ns_) / S;
-    Log(" throughput: {:>7}ops/s", snpf_val(h.acc_.n / wall));
+    auto wall = static_cast<long double>(h.end_ns_ - h.begin_ns_) / S;
+    Log(" throughput: {:>7}ops/s",
+        snpf_val(static_cast<long double>(h.acc_.n) / wall));
   }
 }

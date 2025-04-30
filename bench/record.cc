@@ -222,8 +222,8 @@ char *RecordPair(unsigned vsize, unsigned vage, uint64_t point, char *dst) {
           snprintf(dst, globals.ksize + 1, "%0*" PRIu64, globals.ksize, point) +
           1;
     } else {
-      dst += snprintf(dst, Align(globals.ksize), "%0*" PRIx64,
-                      Align(globals.ksize), point);
+      dst += snprintf(dst, Align(globals.ksize), "%0*" PRIu64,
+                      static_cast<int>(Align(globals.ksize)), point);
     }
   }
 
@@ -268,10 +268,10 @@ int RecordGen::Setup(bool printable, unsigned ksize, unsigned nspaces,
     width = 64 / 8;
     top = UINT64_MAX;
   } else {
-    double width = log(static_cast<double>(maxkey)) / std::numbers::ln2;
+    auto required = ceil(log(static_cast<double>(maxkey)) / std::numbers::ln2);
     Log("key-gen: {} sector of {} items is too huge, unable provide by "
         "{}-bit arithmetics, at least {} required",
-        nsectors, period, sizeof(uintmax_t) * 8, ceil(width));
+        nsectors, period, sizeof(uintmax_t) * 8, ceil(required));
     return -1;
   }
 
@@ -293,7 +293,7 @@ int RecordGen::Setup(bool printable, unsigned ksize, unsigned nspaces,
   globals.width = width;
   globals.nsectors = nsectors;
 
-  if (seed < 0) {
+  if (seed == 0) {
     seed = time(nullptr);
   }
   kv_sbox_init(seed);
@@ -340,9 +340,8 @@ RecordPool::RecordPool(RecordGen *gen, unsigned pool_size) {
   auto bytes = gen->pair_bytes_ * pool_size;
   buf_.reset(new char[bytes]);
 
-  int i;
   char *dst = buf_.get();
-  for (i = 0; i < pool_size; ++i) {
+  for (size_t i = 0; i < pool_size; ++i) {
     dst = RecordPair(gen->vsize_, gen->vage_, gen->base_ + gen->serial_, dst);
     gen->serial_ = (gen->serial_ + 1) % globals.period;
   }

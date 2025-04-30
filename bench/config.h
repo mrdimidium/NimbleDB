@@ -26,7 +26,7 @@ enum BenchType : uint8_t {
   IA_CRUD,
   IA_MAX,
 };
-std::string_view BenchTypeToString(BenchType b);
+std::string_view to_string(BenchType b);
 BenchType BenchTypeFromString(const std::string_view &name);
 
 enum BenchSyncMode : uint8_t {
@@ -34,11 +34,11 @@ enum BenchSyncMode : uint8_t {
   IA_LAZY,
   IA_NOSYNC,
 };
-std::string_view BenchSyncModeToString(BenchSyncMode syncmode);
+std::string_view to_string(BenchSyncMode syncmode);
 std::optional<BenchSyncMode> BenchSyncModeFromString(const std::string &str);
 
 enum BenchWalMode : uint8_t { IA_WAL_INDEF, IA_WAL_ON, IA_WAL_OFF };
-std::string_view BenchWalModeToString(BenchWalMode walmode);
+std::string_view to_string(BenchWalMode walmode);
 std::optional<BenchWalMode> BenchWalModeFromString(const std::string &str);
 
 // clang-format off

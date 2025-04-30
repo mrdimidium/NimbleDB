@@ -105,11 +105,11 @@ class Worker {
         key_space_(key_space),
         key_sequence_(key_sequence),
         benchmask_(benchmask),
+        hg_(histograms),
         g_failed_(failed),
         config_(config),
         driver_(driver),
-        histograms_(histograms),
-        hg_(histograms) {
+        histograms_(histograms) {
     if (benchmask <= 0) {
       Fatal("error: There is no tasks for the worker");
     }
@@ -122,7 +122,7 @@ class Worker {
         if (!line.empty()) {
           line += ", ";
         }
-        line += BenchTypeToString(static_cast<BenchType>(bench));
+        line += to_string(static_cast<BenchType>(bench));
       }
     }
 
@@ -266,7 +266,7 @@ class Worker {
             bench == IA_DELETE ? a.key.size() : a.key.size() + a.value.size());
 
     if (rc == ENOENT) {
-      std::string name{BenchTypeToString(bench)};
+      std::string name{to_string(bench)};
       LogKeyNotFound(name.c_str(), &a);
       if (config_->ignore_keynotfound) {
         rc = 0;
@@ -397,8 +397,6 @@ class Runner {
 
   [[nodiscard]] int Init(Config *config, Driver *driver, Histogram *histograms,
                          const std::string &datadir) {
-    int rc;
-
     datadir_ = datadir;
 
     config_ = config;
@@ -411,7 +409,7 @@ class Runner {
       return -1;
     }
 
-    if (int rc = driver->Open(config_, datadir)) {
+    if (driver->Open(config_, datadir) != 0) {
       return -1;
     }
 
@@ -441,8 +439,8 @@ class Runner {
       key_nspaces *= 2;
     }
 
-    rc = RecordGen::Setup(!config_->binary, config_->key_size, key_nspaces,
-                          key_nsectors, config_->count, config_->kvseed);
+    int rc = RecordGen::Setup(!config_->binary, config_->key_size, key_nspaces,
+                              key_nsectors, config_->count, config_->kvseed);
     if (rc != 0) {
       Fatal(
           "error: key-value generator setup failed, the options are correct?");
@@ -657,7 +655,7 @@ Config &ParseCLIArguments(Config &config, std::span<char *> args) {
          })
       ->description(
           "load type, choices: set, get, delete, iterate, batch, crud")
-      ->default_val(Join(config.benchmarks, BenchTypeToString));
+      ->default_val(Join(config.benchmarks));
 
   app.add_option_function<std::string>(
          "-M,--sync-mode",
@@ -669,7 +667,7 @@ Config &ParseCLIArguments(Config &config, std::span<char *> args) {
            }
          })
       ->description("database sync mode, choices: sync, nosync, lazy")
-      ->default_val(BenchSyncModeToString(config.syncmode));
+      ->default_val(to_string(config.syncmode));
 
   app.add_option_function<std::string>(
          "-W,--wal-mode",
@@ -681,7 +679,7 @@ Config &ParseCLIArguments(Config &config, std::span<char *> args) {
            }
          })
       ->description("database wal mode: indef, walon, waloff")
-      ->default_val(BenchWalModeToString(config.walmode));
+      ->default_val(to_string(config.walmode));
 
   app.add_option("-P,--dirname", config.dirname)
       ->description("dirname for temporaries files & reports")

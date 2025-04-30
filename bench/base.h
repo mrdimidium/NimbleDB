@@ -59,14 +59,16 @@ inline Time GetTimeNow() noexcept {
   return (ts.tv_sec * S) + ts.tv_nsec;
 }
 
-template <typename T, typename V>
-std::string Join(T container, V converter) {
+template <typename T>
+std::string Join(T container, const std::string &delimiter = ", ") {
+  using namespace std;  // NOLINT(*-build-using-namespace)
+
   std::string result;
   for (const auto &it : container) {
     if (!result.empty()) {
-      result += ", ";
+      result += delimiter;
     }
-    result += converter(it);
+    result += to_string(it);
   }
   return result;
 }

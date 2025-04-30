@@ -53,7 +53,7 @@ int DriverDebug::Begin(Context ctx, BenchType step) {
   int rc;
 
   Log("{}.begin({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
-      BenchTypeToString(step));
+      to_string(step));
 
   switch (step) {
     case IA_SET:
@@ -78,17 +78,17 @@ int DriverDebug::Next(Context ctx, BenchType step, Record *kv) {
   switch (step) {
     case IA_SET:
       Log("{}.next({:#x}, {}, {} -> {})", GetName(),
-          reinterpret_cast<size_t>(ctx), BenchTypeToString(step),
-          kv->key.data(), kv->value.data());
+          reinterpret_cast<size_t>(ctx), to_string(step), kv->key.data(),
+          kv->value.data());
       break;
     case IA_GET:
     case IA_DELETE:
       Log("{}.next({:#x}, {}, {})", GetName(), reinterpret_cast<size_t>(ctx),
-          BenchTypeToString(step), kv->key.data());
+          to_string(step), kv->key.data());
       break;
     case IA_ITERATE:
       Log("{}.next({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
-          BenchTypeToString(step));
+          to_string(step));
       break;
     default:
       assert(0);
@@ -101,7 +101,7 @@ int DriverDebug::Done(Context ctx, BenchType step) {
   int rc;
 
   Log("{}.done({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
-      BenchTypeToString(step));
+      to_string(step));
 
   switch (step) {
     case IA_SET:
