@@ -12,15 +12,14 @@
         "uninitialized": true
       },
       "cacheVariables": {
-        "CMAKE_GENERATOR": "Ninja Multi-Config",
-        "CMAKE_CONFIGURATION_TYPES": "Release;MinSizeRel;RelWithDebInfo;Debug",
+        "CMAKE_GENERATOR": "Ninja",
 
-        "CMAKE_VERBOSE_MAKEFILE": "ON",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
 
-        "NIMBLEDB_SANITIZER": "asan",
+        "NIMBLEDB_SANITIZER": "ubsan",
         "NIMBLEDB_WITH_TESTS": "ON",
+        "NIMBLEDB_WITH_CBENCH": "ON",
         "NIMBLEDB_WITH_CLANG_TIDY": "ON",
         "NIMBLEDB_FAIL_ON_WARNINGS": "ON"
       }

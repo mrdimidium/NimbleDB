@@ -86,13 +86,10 @@ find_package(uring 2.0 REQUIRED)
 list(APPEND THIRDPARTY_LIBS uring::uring)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" ON)
-if(BUILD_SHARED_LIBS)
-  set(NIMBLEDB_LIB nimble-shared)
-else()
-  set(NIMBLEDB_LIB nimble)
-endif()
+set(NIMBLEDB_LIB nimbledb)
 
 add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES} ${NIMBLEDB_HEADERS})
+add_library(${NIMBLEDB_LIB}::${NIMBLEDB_LIB} ALIAS ${NIMBLEDB_LIB})
 nimble_compile_warnings(${NIMBLEDB_LIB})
 
 target_include_directories(${NIMBLEDB_LIB} PUBLIC
@@ -118,7 +115,7 @@ if(BUILD_SHARED_LIBS)
 endif()
 
 # Tests
-option(NIMBLEDB_WITH_TESTS "build with tests" OFF)
+option(NIMBLEDB_WITH_TESTS "build tests" OFF)
 if(NIMBLEDB_WITH_TESTS)
   include(GoogleTest)
   find_package(GTest REQUIRED)
@@ -144,4 +141,13 @@ if(NIMBLEDB_WITH_TESTS)
     gtest_discover_tests(${exename} DISCOVERY_TIMEOUT 120)
     add_dependencies(nimbledb_tests ${exename})
   endforeach()
+endif()
+
+# Comparative benchmark
+option(NIMBLEDB_WITH_CBENCH "build comparative benchmark" OFF)
+if(NIMBLEDB_WITH_CBENCH)
+  # Always build with NimbleDB if it is part of the root
+  set(ENABLE_NIMBLEDB ON CACHE INTERNAL BOOL)
+
+  add_subdirectory("cbench")
 endif()

@@ -23,6 +23,8 @@
 #include <cstring>
 #include <ctime>
 #include <format>
+#include <memory>
+#include <optional>
 
 #include "base.h"
 #include "config.h"
@@ -45,36 +47,42 @@ struct Usage {
   static std::optional<Usage> Load(const std::string &datadir);
 };
 
-std::optional<Usage> Usage::Load(const std::string &datadir) {
-  rusage glibc{};
+thread_local int64_t diskusage;
 
-  if (getrusage(RUSAGE_SELF, &glibc) != 0) {
+int ftw_diskspace(const char *fpath, const struct stat *sb, int typeflag) {
+  (void)fpath;
+  (void)typeflag;
+  diskusage += sb->st_size;
+  return 0;
+}
+
+std::optional<Usage> Usage::Load(const std::string &datadir) {
+  rusage libc_usage{};
+
+  if (getrusage(RUSAGE_SELF, &libc_usage) != 0) {
     return std::nullopt;
   }
 
-  namespace fs = std::filesystem;
-
-  int64_t diskusage = 0;
-  if (!datadir.empty()) {
-    for (const auto &dir_entry : fs::recursive_directory_iterator(datadir)) {
-      if (dir_entry.is_regular_file()) {
-        diskusage += static_cast<int64_t>(dir_entry.file_size());
-      }
-    }
+  diskusage = 0;
+  // NOLINTBEGIN(concurrency-mt-unsafe)
+  if (!datadir.empty() && ftw(datadir.c_str(), ftw_diskspace, 42) != 0) {
+    Log("error: ", strerror(errno));
+    return std::nullopt;
   }
+  // NOLINTEND(concurrency-mt-unsafe)
 
   return Usage{
-      .ram = glibc.ru_maxrss,
+      .ram = libc_usage.ru_maxrss,
       .disk = diskusage,
 
-      .iops_read = glibc.ru_inblock,
-      .iops_write = glibc.ru_oublock,
-      .iops_page = glibc.ru_majflt,
+      .iops_read = libc_usage.ru_inblock,
+      .iops_write = libc_usage.ru_oublock,
+      .iops_page = libc_usage.ru_majflt,
 
-      .cpu_user_ns = (glibc.ru_utime.tv_sec * 1'000'000'000) +
-                     (glibc.ru_utime.tv_usec * 1000),
-      .cpu_kernel_ns = (glibc.ru_stime.tv_sec * 1'000'000'000) +
-                       (glibc.ru_stime.tv_usec * 1000),
+      .cpu_user_ns = (libc_usage.ru_utime.tv_sec * 1'000'000'000) +
+                     (libc_usage.ru_utime.tv_usec * 1000),
+      .cpu_kernel_ns = (libc_usage.ru_stime.tv_sec * 1'000'000'000) +
+                       (libc_usage.ru_stime.tv_usec * 1000),
   };
 }
 
@@ -188,6 +196,7 @@ class Worker {
               rc = EvalBenchmarkIterate(i);
               break;
             default:
+              Fatal("1");
               Unreachable();
               rc = -1;
           }

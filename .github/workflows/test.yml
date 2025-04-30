@@ -43,7 +43,7 @@ jobs:
         cmake -LAH -S. -B'build/' -DCMAKE_VERBOSE_MAKEFILE=ON \
           -DBUILD_SHARED_LIBS="${{ matrix.library == 'shared' && 'ON' || 'OFF' }}" \
           -DNIMBLEDB_WITH_CLANG_TIDY="${{ startsWith(matrix.compiler, 'llvm') && 'ON' || 'OFF' }}" \
-          -DNIMBLEDB_WITH_TESTS=ON -DNIMBLEDB_FAIL_ON_WARNINGS=ON \
+          -DNIMBLEDB_WITH_TESTS=ON -DNIMBLEDB_WITH_CBENCH=ON -DNIMBLEDB_FAIL_ON_WARNINGS=ON \
           -DNIMBLEDB_SANITIZER="${{matrix.sanitizer}}"
 
     - name: Build & Test

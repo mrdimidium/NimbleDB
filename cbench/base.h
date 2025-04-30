@@ -5,6 +5,7 @@
 #ifndef NIMBLEDB_BENCH_BASE_H_
 #define NIMBLEDB_BENCH_BASE_H_
 
+#include <cassert>
 #include <format>
 #include <iostream>
 #include <ostream>

@@ -39,6 +39,10 @@ class Driver {
 
 Driver *driver_debug();
 
+#if HAVE_NIMBLEDB
+Driver *driver_nimbledb();
+#endif
+
 #if HAVE_LMDB
 Driver *driver_lmdb();
 #endif
@@ -51,6 +55,12 @@ inline Driver *Driver::GetDriverFor(std::string_view name) {
   if (name == driver_debug()->GetName()) {
     return driver_debug();
   }
+
+#if HAVE_NIMBLEDB
+  if (name == driver_nimbledb()->GetName()) {
+    return driver_nimbledb();
+  }
+#endif
 
 #if HAVE_LMDB
   if (name == driver_lmdb()->GetName()) {
@@ -77,6 +87,10 @@ inline std::string Driver::Supported() {
   };
 
   setup_driver(driver_debug()->GetName());
+
+#if HAVE_NIMBLEDB
+  setup_driver(driver_nimbledb()->GetName());
+#endif
 
 #if HAVE_LMDB
   setup_driver(driver_lmdb()->GetName());

@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.31)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../cmake/")
 
-project(dbbench
+project(cbench
   LANGUAGES CXX C
   DESCRIPTION "Benchmark to compare nimble performance with other embedded databases")
 
@@ -29,29 +29,49 @@ set(DBBENCH_FILES
   "main.cc"
 )
 
+option(ENABLE_NIMBLEDB "Enable NimbleDB" ON)
+if(ENABLE_NIMBLEDB)
+  # This CMAakeLists.txt can be built independently or connected from the root.
+  # If it is root then we specify nimble as a dependency,
+  # otherwise the library is already available
+  if(PROJECT_IS_TOP_LEVEL)
+    add_subdirectory(
+      ${CMAKE_CURRENT_SOURCE_DIR}/../
+      ${CMAKE_CURRENT_BINARY_DIR}/_deps/nimbledb)
+  endif()
+endif()
+
 # LMDB
-option(ENABLE_LMDB "Enable LMDB" ON)
+option(ENABLE_LMDB "Enable LMDB" OFF)
 if(ENABLE_LMDB)
+  find_program(MAKE_PROGRAM NAMES gmake nmake make REQUIRED)
+
+  set(TARGET liblmdb${CMAKE_STATIC_LIBRARY_SUFFIX})
+  set(SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/liblmdb)
+  set(SOURCE_SUBDIR libraries/liblmdb)
+
   include(ExternalProject)
   ExternalProject_Add(liblmdb
     GIT_REPOSITORY    https://github.com/LMDB/lmdb.git
     GIT_TAG           f20e41de09d97e4461946b7e26ec831d0c24fac7
-    GIT_SHALLOW       ON
-    SOURCE_DIR        ${PROJECT_BINARY_DIR}/_deps/liblmdb
+    SOURCE_DIR        ${SOURCE_DIR}
+    SOURCE_SUBDIR     ${SOURCE_SUBDIR}
+    BUILD_BYPRODUCTS  ${SOURCE_DIR}/${SOURCE_SUBDIR}/${TARGET}
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND     ${CMAKE_MAKE_PROGRAM} -C libraries/liblmdb/ liblmdb${CMAKE_STATIC_LIBRARY_SUFFIX}
+    BUILD_COMMAND
+      ${MAKE_PROGRAM} CC=${CMAKE_C_COMPILER} AR=${CMAKE_AR} ${TARGET}
     INSTALL_COMMAND   ""
     BUILD_IN_SOURCE   ON)
 
   add_library(liblmdb::liblmdb STATIC IMPORTED)
   add_dependencies(liblmdb::liblmdb liblmdb)
-  include_directories(${PROJECT_BINARY_DIR}/_deps/liblmdb/libraries/liblmdb)
-  set_target_properties(liblmdb::liblmdb PROPERTIES IMPORTED_LOCATION
-      ${PROJECT_BINARY_DIR}/_deps/liblmdb/libraries/liblmdb/liblmdb${CMAKE_STATIC_LIBRARY_SUFFIX})
+  include_directories(${SOURCE_DIR}/${SOURCE_SUBDIR})
+  set_target_properties(liblmdb::liblmdb PROPERTIES
+    IMPORTED_LOCATION ${SOURCE_DIR}/${SOURCE_SUBDIR}/${TARGET})
 endif()
 
 # RocksDB
-option(ENABLE_ROCKSDB "Enable RocksDB" ON)
+option(ENABLE_ROCKSDB "Enable RocksDB" OFF)
 if(ENABLE_ROCKSDB)
   include(FetchContent)
   FetchContent_Declare(RocksDB SYSTEM
@@ -80,17 +100,20 @@ find_package(CLI11 REQUIRED)
 include_directories("${PROJECT_SOURCE_DIR}")
 include_directories("${PROJECT_BINARY_DIR}")
 
-add_executable(bench
+add_executable(cbench
   ${DBBENCH_HEADERS} ${DBBENCH_FILES}
-  "$<$<BOOL:ENABLE_LMDB>:driver_lmdb.cc>"
-  "$<$<BOOL:ENABLE_ROCKSDB>:driver_rocksdb.cc>"
+  "$<$<BOOL:${ENABLE_NIMBLEDB}>:driver_nimbledb.cc>"
+  "$<$<BOOL:${ENABLE_LMDB}>:driver_lmdb.cc>"
+  "$<$<BOOL:${ENABLE_ROCKSDB}>:driver_rocksdb.cc>"
 )
-target_compile_definitions(bench PRIVATE
-  "$<$<BOOL:ENABLE_LMDB>:-DHAVE_LMDB>"
-  "$<$<BOOL:ENABLE_ROCKSDB>:-DHAVE_ROCKSDB>"
+target_compile_definitions(cbench PRIVATE
+  "$<$<BOOL:${ENABLE_NIMBLEDB}>:-DHAVE_NIMBLEDB>"
+  "$<$<BOOL:${ENABLE_LMDB}>:-DHAVE_LMDB>"
+  "$<$<BOOL:${ENABLE_ROCKSDB}>:-DHAVE_ROCKSDB>"
 )
-target_link_libraries(bench PUBLIC
+target_link_libraries(cbench PUBLIC
   Threads::Threads CLI11::CLI11
-  "$<$<BOOL:ENABLE_LMDB>:liblmdb::liblmdb>"
-  "$<$<BOOL:ENABLE_ROCKSDB>:rocksdb>"
+  "$<$<BOOL:${ENABLE_NIMBLEDB}>:nimbledb::nimbledb>"
+  "$<$<BOOL:${ENABLE_LMDB}>:liblmdb::liblmdb>"
+  "$<$<BOOL:${ENABLE_ROCKSDB}>:rocksdb>"
 )
