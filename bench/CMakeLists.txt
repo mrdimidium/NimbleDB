@@ -5,7 +5,6 @@
 cmake_minimum_required(VERSION 3.31)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/../cmake/")
-include(FindCLI11)
 
 project(dbbench
   LANGUAGES CXX C
@@ -21,6 +20,7 @@ set(DBBENCH_HEADERS
   "record.h"
   "histogram.h"
 )
+
 set(DBBENCH_FILES
   "driver_debug.cc"
   "config.cc"
@@ -29,51 +29,44 @@ set(DBBENCH_FILES
   "main.cc"
 )
 
-set(DBBENCH_THIRDPARTY "")
-add_custom_target(dbbench_deps)
-
 # LMDB
 option(ENABLE_LMDB "Enable LMDB" ON)
 if(ENABLE_LMDB)
-  set(LMDB_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/lmdb/libraries/liblmdb)
+  include(ExternalProject)
+  ExternalProject_Add(liblmdb
+    GIT_REPOSITORY    https://github.com/LMDB/lmdb.git
+    GIT_TAG           f20e41de09d97e4461946b7e26ec831d0c24fac7
+    GIT_SHALLOW       ON
+    SOURCE_DIR        ${PROJECT_BINARY_DIR}/_deps/liblmdb
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ${CMAKE_MAKE_PROGRAM} -C libraries/liblmdb/ liblmdb${CMAKE_STATIC_LIBRARY_SUFFIX}
+    INSTALL_COMMAND   ""
+    BUILD_IN_SOURCE   ON)
 
-  if(${PROJECT_BINARY_DIR} STREQUAL ${PROJECT_SOURCE_DIR})
-    add_custom_command(
-      OUTPUT ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb/liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX}
-      COMMAND ${CMAKE_MAKE_PROGRAM} -j ${MAKE_NJOB} -C ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX}
-      DEPENDS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
-  else()
-    add_custom_command(
-      OUTPUT ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb/liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX}
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/lmdb/libraries/liblmdb ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb
-      COMMAND ${CMAKE_MAKE_PROGRAM} -j ${MAKE_NJOB} -C ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX}
-      DEPENDS ${PROJECT_BINARY_DIR}/CMakeCache.txt)
-  endif()
-
-  add_custom_target(liblmdb ALL
-    DEPENDS ${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb/liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-  list(APPEND DBBENCH_FILES "driver_lmdb.cc")
-  list(APPEND DBBENCH_THIRDPARTY
-    "${PROJECT_BINARY_DIR}/lmdb/libraries/liblmdb/liblmdb${CMAKE_SHARED_LIBRARY_SUFFIX}")
-
-  include_directories(${LMDB_INCLUDE_DIRS})
-
-  add_definitions(-DHAVE_LMDB)
-  add_dependencies(dbbench_deps liblmdb)
+  add_library(liblmdb::liblmdb STATIC IMPORTED)
+  add_dependencies(liblmdb::liblmdb liblmdb)
+  include_directories(${PROJECT_BINARY_DIR}/_deps/liblmdb/libraries/liblmdb)
+  set_target_properties(liblmdb::liblmdb PROPERTIES IMPORTED_LOCATION
+      ${PROJECT_BINARY_DIR}/_deps/liblmdb/libraries/liblmdb/liblmdb${CMAKE_STATIC_LIBRARY_SUFFIX})
 endif()
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 
+include(FindCLI11)
+find_package(CLI11 REQUIRED)
+
 include_directories("${PROJECT_SOURCE_DIR}")
 include_directories("${PROJECT_BINARY_DIR}")
 
-add_executable(bench ${DBBENCH_FILES} ${DBBENCH_HEADERS})
-add_dependencies(bench dbbench_deps)
-
-target_link_libraries(bench
-  PRIVATE CLI11::CLI11 Threads::Threads
-  PUBLIC ${DBBENCH_THIRDPARTY} "${CMAKE_THREAD_LIBS_INIT}"
+add_executable(bench
+  ${DBBENCH_HEADERS} ${DBBENCH_FILES}
+  "$<$<BOOL:ENABLE_LMDB>:driver_lmdb.cc>"
+)
+target_compile_definitions(bench PRIVATE
+  "$<$<BOOL:ENABLE_LMDB>:-DHAVE_LMDB>"
+)
+target_link_libraries(bench PUBLIC
+  Threads::Threads CLI11::CLI11
+  "$<$<BOOL:ENABLE_LMDB>:liblmdb::liblmdb>"
 )
