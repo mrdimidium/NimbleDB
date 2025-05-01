@@ -88,7 +88,7 @@
 #endif
 
 #ifndef NIMBLEDB_NAMESPACE
-  #define nimbledb
+  #define NIMBLEDB_NAMESPACE nimbledb
 #endif
 
 namespace NIMBLEDB_NAMESPACE {

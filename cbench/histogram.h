@@ -71,7 +71,7 @@ class Bucket {
   Histogram *registry_;
 
   bool enabled_ = false, is_worker_ = false;
-  BenchType bench_ = IA_MAX;
+  BenchType bench_ = kTypeMaxCode;
 
   int merge_evo_ = 0;
 

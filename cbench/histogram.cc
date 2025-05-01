@@ -155,7 +155,7 @@ Histogram::Histogram(const std::set<BenchType> &benchmarks) {
   starting_point_ = GetTimeNow();
   checkpoint_ns_ = starting_point_;
 
-  for (size_t i = IA_SET; i < IA_MAX; ++i) {
+  for (size_t i = kTypeSet; i < kTypeMaxCode; ++i) {
     auto bench = static_cast<BenchType>(i);
     auto [it, _] = per_bench_.emplace(bench, Bucket(this, false));
 

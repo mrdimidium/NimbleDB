@@ -125,7 +125,7 @@ class Worker {
     workers_count_ += 1;
 
     std::string line;
-    for (size_t bench = IA_SET; bench < IA_MAX; ++bench) {
+    for (size_t bench = kTypeSet; bench < kTypeMaxCode; ++bench) {
       if ((benchmask & (1U << bench)) != 0) {
         if (!line.empty()) {
           line += ", ";
@@ -168,7 +168,7 @@ class Worker {
            (config_->continuous_completing && doers_done_ < workers_count_)) {
       int rc = 0;
 
-      for (size_t it = IA_SET; rc == 0 && it < IA_MAX; it++) {
+      for (size_t it = kTypeSet; rc == 0 && it < kTypeMaxCode; it++) {
         if ((benchmask_ & (1U << it)) == 0) {
           continue;
         }
@@ -179,20 +179,20 @@ class Worker {
 
         for (size_t i = 0; rc == 0 && i < config_->count;) {
           switch (it) {
-            case IA_SET:
-            case IA_DELETE:
-            case IA_GET:
+            case kTypeSet:
+            case kTypeDelete:
+            case kTypeGet:
               rc = EvalBenchmarkGST(bench);
               ++i;
               break;
-            case IA_CRUD:
+            case kTypeCrud:
               rc = EvalBenchmarkCrud();
               ++i;
               break;
-            case IA_BATCH:
+            case kTypeBatch:
               rc = EvalBenchmarkBatch(i);
               break;
-            case IA_ITERATE:
+            case kTypeIterate:
               rc = EvalBenchmarkIterate(i);
               break;
             default:
@@ -222,17 +222,17 @@ class Worker {
 
  private:
   int EvalCrud(Record *a, Record *b) {
-    int rc = driver_->Next(ctx_, IA_SET, b);
+    int rc = driver_->Next(ctx_, kTypeSet, b);
     if (rc != 0) {
       return rc;
     }
 
-    rc = driver_->Next(ctx_, IA_SET, a);
+    rc = driver_->Next(ctx_, kTypeSet, a);
     if (rc != 0) {
       return rc;
     }
 
-    rc = driver_->Next(ctx_, IA_DELETE, b);
+    rc = driver_->Next(ctx_, kTypeDelete, b);
     if (rc == ENOENT) {
       LogKeyNotFound("crud.del", b);
       if (!config_->ignore_keynotfound) {
@@ -244,7 +244,7 @@ class Worker {
       return rc;
     }
 
-    rc = driver_->Next(ctx_, IA_GET, a);
+    rc = driver_->Next(ctx_, kTypeGet, a);
     if (rc == ENOENT) {
       LogKeyNotFound("crud.get", a);
       if (config_->ignore_keynotfound) {
@@ -260,7 +260,7 @@ class Worker {
     int rc2 = 0;
     Record a;
 
-    if (gen_a_->Get(&a, bench != IA_SET) != 0) {
+    if (gen_a_->Get(&a, bench != kTypeSet) != 0) {
       return rc;
     }
 
@@ -271,8 +271,8 @@ class Worker {
     }
     rc2 = driver_->Done(ctx_, bench);
 
-    hg_.Add(t0,
-            bench == IA_DELETE ? a.key.size() : a.key.size() + a.value.size());
+    hg_.Add(t0, bench == kTypeDelete ? a.key.size()
+                                     : a.key.size() + a.value.size());
 
     if (rc == ENOENT) {
       std::string name{to_string(bench)};
@@ -300,12 +300,12 @@ class Worker {
     }
 
     Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, IA_CRUD);
+    int rc = driver_->Begin(ctx_, kTypeCrud);
     if (rc == 0) {
       rc = EvalCrud(&a, &b);
     }
     if (rc == 0) {
-      rc = driver_->Done(ctx_, IA_CRUD);
+      rc = driver_->Done(ctx_, kTypeCrud);
     }
     hg_.Add(t0, a.key.size() + a.value.size() + b.key.size() + b.value.size() +
                     a.key.size() + b.key.size() + b.value.size());
@@ -324,7 +324,7 @@ class Worker {
     RecordPool pool_b(gen_b_.get(), config_->batch_length);
 
     Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, IA_BATCH);
+    int rc = driver_->Begin(ctx_, kTypeBatch);
     for (size_t j = 0; j < config_->batch_length; ++j) {
       if ((pool_a.Pull(&a) != 0) || (pool_b.Pull(&b) != 0)) {
         return rc;
@@ -335,7 +335,7 @@ class Worker {
       }
     }
     if (rc == 0) {
-      rc = driver_->Done(ctx_, IA_BATCH);
+      rc = driver_->Done(ctx_, kTypeBatch);
     }
     hg_.Add(t0, (a.key.size() + a.value.size() + b.key.size() + b.value.size() +
                  a.key.size() + b.key.size() + b.value.size()) *
@@ -349,11 +349,11 @@ class Worker {
   int EvalBenchmarkIterate(size_t &i) {
     Record a;
     Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, IA_ITERATE);
+    int rc = driver_->Begin(ctx_, kTypeIterate);
     while (rc == 0) {
       a.key = std::span<char>();
       a.value = std::span<char>();
-      rc = driver_->Next(ctx_, IA_ITERATE, &a);
+      rc = driver_->Next(ctx_, kTypeIterate, &a);
       hg_.Add(t0, a.key.size() + a.value.size());
       if (++i == config_->count) {
         break;
@@ -364,7 +364,7 @@ class Worker {
       rc = 0;
     }
     if (rc == 0) {
-      rc = driver_->Done(ctx_, IA_ITERATE);
+      rc = driver_->Done(ctx_, kTypeIterate);
     }
     return rc;
   }
@@ -423,7 +423,7 @@ class Runner {
     }
 
     for (const auto &bench : config_->benchmarks) {
-      if (bench == IA_ITERATE || bench == IA_GET) {
+      if (bench == kTypeIterate || bench == kTypeGet) {
         set_rd |= 1UL << bench;
       } else {
         set_wr |= 1UL << bench;
@@ -599,8 +599,8 @@ class Runner {
 
       uint64_t mask = *rotator;
       if (config_->separate) {
-        uint64_t order = IA_SET;
-        for (mask = 0; mask == 0; order = (order + 1) % IA_MAX) {
+        uint64_t order = kTypeSet;
+        for (mask = 0; mask == 0; order = (order + 1) % kTypeMaxCode) {
           mask = *rotator & (1ULL << order);
         }
       }

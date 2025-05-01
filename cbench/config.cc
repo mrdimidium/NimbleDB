@@ -22,91 +22,91 @@
 
 std::string_view to_string(BenchType b) {
   switch (b) {
-    case IA_SET:
+    case kTypeSet:
       return "set";
-    case IA_GET:
+    case kTypeGet:
       return "get";
-    case IA_DELETE:
+    case kTypeDelete:
       return "del";
-    case IA_ITERATE:
+    case kTypeIterate:
       return "iter";
-    case IA_BATCH:
+    case kTypeBatch:
       return "batch";
-    case IA_CRUD:
+    case kTypeCrud:
       return "crud";
-    case IA_MAX:
+    case kTypeMaxCode:
       Unreachable();
   }
   return "(unknown)";
 }
 BenchType BenchTypeFromString(const std::string_view &name) {
   if (name == "set") {
-    return IA_SET;
+    return kTypeSet;
   }
   if (name == "get") {
-    return IA_GET;
+    return kTypeGet;
   }
   if (name == "del" || name == "delete") {
-    return IA_DELETE;
+    return kTypeDelete;
   }
   if (name == "iter" || name == "iterate") {
-    return IA_ITERATE;
+    return kTypeIterate;
   }
   if (name == "batch") {
-    return IA_BATCH;
+    return kTypeBatch;
   }
   if (name == "crud" || name == "transact") {
-    return IA_CRUD;
+    return kTypeCrud;
   }
-  return IA_MAX;
+  return kTypeMaxCode;
 }
 
 std::string_view to_string(BenchSyncMode syncmode) {
   switch (syncmode) {
-    case IA_SYNC:
+    case kModeSync:
       return "sync";
-    case IA_LAZY:
+    case kModeLazy:
       return "lazy";
-    case IA_NOSYNC:
+    case kModeNoSync:
       return "nosync";
     default:
       return "???";
   }
 }
 std::optional<BenchSyncMode> BenchSyncModeFromString(const std::string &str) {
-  if (str == to_string(IA_SYNC)) {
-    return IA_SYNC;
+  if (str == to_string(kModeSync)) {
+    return kModeSync;
   }
-  if (str == to_string(IA_LAZY)) {
-    return IA_LAZY;
+  if (str == to_string(kModeLazy)) {
+    return kModeLazy;
   }
-  if (str == to_string(IA_NOSYNC)) {
-    return IA_NOSYNC;
+  if (str == to_string(kModeNoSync)) {
+    return kModeNoSync;
   }
   return std::nullopt;
 }
 
 std::string_view to_string(BenchWalMode walmode) {
   switch (walmode) {
-    case IA_WAL_INDEF:
+    case kWalDefault:
       return "indef";
-    case IA_WAL_ON:
+    case kWalEnabled:
       return "walon";
-    case IA_WAL_OFF:
+    case kWalDisabled:
       return "waloff";
     default:
       return "???";
   }
 }
 std::optional<BenchWalMode> BenchWalModeFromString(const std::string &str) {
-  if (str == to_string(IA_WAL_INDEF)) {
-    return IA_WAL_INDEF;
+  if (str == to_string(kWalDefault)) {
+    return kWalDefault;
   }
-  if (str == to_string(IA_WAL_ON)) {
-    return IA_WAL_ON;
+  if (str == to_string(kWalEnabled)) {
+    return kWalEnabled;
   }
-  if (str == to_string(IA_WAL_OFF)) {
-    return IA_WAL_OFF;
+  if (str == to_string(kWalDisabled)) {
+    return kWalDisabled;
   }
   return std::nullopt;
 }

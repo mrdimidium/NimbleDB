@@ -61,13 +61,13 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
 
   // suggestions are welcome
   switch (config_->syncmode) {
-    case IA_SYNC:
+    case kModeSync:
       modeflags = 0;
       break;
-    case IA_LAZY:
+    case kModeLazy:
       modeflags = MDB_NOSYNC | MDB_NOMETASYNC;  // NOLINT(hicpp-signed-bitwise)
       break;
-    case IA_NOSYNC:
+    case kModeNoSync:
       modeflags = MDB_WRITEMAP | MDB_MAPASYNC;  // NOLINT(hicpp-signed-bitwise)
       break;
     default:
@@ -77,10 +77,10 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
   }
 
   switch (config_->walmode) {
-    case IA_WAL_INDEF:
-    case IA_WAL_OFF:
+    case kWalDefault:
+    case kWalDisabled:
       break;
-    case IA_WAL_ON:
+    case kWalEnabled:
     default:
       Log("error: {}(): unsupported walmode {}", __func__,
           to_string(config_->walmode));
@@ -154,10 +154,10 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
 
   int rc = 0;
   switch (step) {
-    case IA_SET:
-    case IA_BATCH:
-    case IA_CRUD:
-    case IA_DELETE:
+    case kTypeSet:
+    case kTypeBatch:
+    case kTypeCrud:
+    case kTypeDelete:
       if (ctx->cursor != nullptr) {
         // cursor could NOT be reused for read/write
         mdb_cursor_close(ctx->cursor);
@@ -176,8 +176,8 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
       }
       break;
 
-    case IA_ITERATE:
-    case IA_GET:
+    case kTypeIterate:
+    case kTypeGet:
       if (ctx->txn != nullptr) {
         rc = mdb_txn_renew(ctx->txn);
         if (rc != MDB_SUCCESS) {
@@ -194,7 +194,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
         }
       }
 
-      if (step == IA_ITERATE) {
+      if (step == kTypeIterate) {
         if (ctx->cursor != nullptr) {
           rc = mdb_cursor_renew(ctx->txn, ctx->cursor);
           if (rc != MDB_SUCCESS) {
@@ -213,7 +213,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
       }
       break;
 
-    case IA_MAX:
+    case kTypeMaxCode:
       assert(0);
       break;
   }
@@ -229,7 +229,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
   int rc;
 
   switch (step) {
-    case IA_SET:
+    case kTypeSet:
       k.mv_data = kv->key.data();
       k.mv_size = kv->key.size();
       v.mv_data = kv->value.data();
@@ -242,7 +242,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       }
       break;
 
-    case IA_DELETE:
+    case kTypeDelete:
       k.mv_data = kv->key.data();
       k.mv_size = kv->key.size();
       rc = mdb_del(ctx->txn, dbi, &k, nullptr);
@@ -255,7 +255,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       }
       break;
 
-    case IA_ITERATE:
+    case kTypeIterate:
       rc = mdb_cursor_get(ctx->cursor, &k, &v, MDB_NEXT);
       if (rc == MDB_SUCCESS) {
         kv->key = std::span(static_cast<char *>(k.mv_data), k.mv_size);
@@ -271,7 +271,7 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       }
       break;
 
-    case IA_GET:
+    case kTypeGet:
       k.mv_data = kv->key.data();
       k.mv_size = kv->key.size();
       rc = mdb_get(ctx->txn, dbi, &k, &v);
@@ -299,10 +299,10 @@ int DriverLmdb::Done(Context ctxptr, BenchType step) {
   int rc;
 
   switch (step) {
-    case IA_SET:
-    case IA_BATCH:
-    case IA_CRUD:
-    case IA_DELETE:
+    case kTypeSet:
+    case kTypeBatch:
+    case kTypeCrud:
+    case kTypeDelete:
       rc = mdb_txn_commit(ctx->txn);
       if (rc != MDB_SUCCESS) {
         mdb_txn_abort(ctx->txn);
@@ -315,8 +315,8 @@ int DriverLmdb::Done(Context ctxptr, BenchType step) {
       ctx->txn = nullptr;
       break;
 
-    case IA_ITERATE:
-    case IA_GET:
+    case kTypeIterate:
+    case kTypeGet:
       mdb_txn_reset(ctx->txn);
       rc = 0;
       break;

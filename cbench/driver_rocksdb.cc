@@ -45,7 +45,8 @@ class DriverRocksDB : public Driver {
  private:
   Config *config_ = nullptr;
 
-  rocksdb::DB *db = nullptr;
+  std::unique_ptr<rocksdb::DB> db = nullptr;
+
   rocksdb::Options opts;
   rocksdb::ReadOptions ropts;
   rocksdb::WriteOptions wopts;
@@ -61,12 +62,12 @@ int DriverRocksDB::Open(Config *config, const std::string &datadir) {
 
   /* LY: suggestions are welcome */
   switch (config_->syncmode) {
-    case IA_SYNC:
+    case kModeSync:
       wopts.sync = true;
       opts.use_fsync = true;
       break;
-    case IA_LAZY:
-    case IA_NOSYNC:
+    case kModeLazy:
+    case kModeNoSync:
       wopts.sync = false;
       opts.use_fsync = false;
       break;
@@ -76,12 +77,12 @@ int DriverRocksDB::Open(Config *config, const std::string &datadir) {
   }
 
   switch (config_->walmode) {
-    case IA_WAL_INDEF:
+    case kWalDefault:
       break;
-    case IA_WAL_ON:
+    case kWalEnabled:
       wopts.disableWAL = false;
       break;
-    case IA_WAL_OFF:
+    case kWalDisabled:
       wopts.disableWAL = true;
       break;
     default:
@@ -108,7 +109,6 @@ int DriverRocksDB::Close() {
 
 Driver::Context DriverRocksDB::ThreadNew() {
   auto *ctx = new DriverRocksDBContext;
-
   return ctx;
 }
 
@@ -124,12 +124,12 @@ int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
-    case IA_GET:
-    case IA_SET:
-    case IA_DELETE:
+    case kTypeGet:
+    case kTypeSet:
+    case kTypeDelete:
       break;
 
-    case IA_ITERATE:
+    case kTypeIterate:
       ctx->it = db->NewIterator(ropts);
       if (ctx->it == nullptr) {
         Log("error: {}, {}, rocksdb_create_iterator() failed", __func__,
@@ -139,8 +139,8 @@ int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
       ctx->it->SeekToFirst();
       break;
 
-    case IA_BATCH:
-    case IA_CRUD:
+    case kTypeBatch:
+    case kTypeCrud:
       ctx->batch = new rocksdb::WriteBatch;
       if (ctx->batch == nullptr) {
         Log("error: {}, {}, rocksdb_writebatch_create() failed", __func__,
@@ -160,7 +160,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
-    case IA_SET: {
+    case kTypeSet: {
       rocksdb::Status st;
       if (ctx->batch != nullptr) {
         st = ctx->batch->Put(ToSlice(kv->key), ToSlice(kv->value));
@@ -174,7 +174,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       break;
     }
 
-    case IA_DELETE: {
+    case kTypeDelete: {
       rocksdb::Status st;
       if (ctx->batch != nullptr) {
         st = ctx->batch->Delete(ToSlice(kv->key));
@@ -188,7 +188,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       break;
     }
 
-    case IA_GET: {
+    case kTypeGet: {
       rocksdb::PinnableSlice value;
       auto st = db->Get(rocksdb::ReadOptions(), db->DefaultColumnFamily(),
                         ToSlice(kv->key), &value);
@@ -207,7 +207,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       break;
     }
 
-    case IA_ITERATE: {
+    case kTypeIterate: {
       if (ctx->it->Valid()) {
         return ENOENT;
       }
@@ -232,20 +232,20 @@ int DriverRocksDB::Done(Context ctxptr, BenchType step) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
-    case IA_GET:
-    case IA_SET:
-    case IA_DELETE:
+    case kTypeGet:
+    case kTypeSet:
+    case kTypeDelete:
       break;
 
-    case IA_ITERATE:
+    case kTypeIterate:
       if (ctx->it != nullptr) {
         delete ctx->it;
         ctx->it = nullptr;
       }
       break;
 
-    case IA_CRUD:
-    case IA_BATCH:
+    case kTypeCrud:
+    case kTypeBatch:
       if (ctx->batch != nullptr) {
         auto st = db->Write(wopts, ctx->batch);
         if (!st.ok()) {

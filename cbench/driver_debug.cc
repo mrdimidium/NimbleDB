@@ -56,12 +56,12 @@ int DriverDebug::Begin(Context ctx, BenchType step) {
       to_string(step));
 
   switch (step) {
-    case IA_SET:
-    case IA_BATCH:
-    case IA_CRUD:
-    case IA_DELETE:
-    case IA_ITERATE:
-    case IA_GET:
+    case kTypeSet:
+    case kTypeBatch:
+    case kTypeCrud:
+    case kTypeDelete:
+    case kTypeIterate:
+    case kTypeGet:
       rc = 0;
       break;
 
@@ -76,17 +76,17 @@ int DriverDebug::Next(Context ctx, BenchType step, Record *kv) {
   int rc = 0;
 
   switch (step) {
-    case IA_SET:
+    case kTypeSet:
       Log("{}.next({:#x}, {}, {} -> {})", GetName(),
           reinterpret_cast<size_t>(ctx), to_string(step), kv->key.data(),
           kv->value.data());
       break;
-    case IA_GET:
-    case IA_DELETE:
+    case kTypeGet:
+    case kTypeDelete:
       Log("{}.next({:#x}, {}, {})", GetName(), reinterpret_cast<size_t>(ctx),
           to_string(step), kv->key.data());
       break;
-    case IA_ITERATE:
+    case kTypeIterate:
       Log("{}.next({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
           to_string(step));
       break;
@@ -104,12 +104,12 @@ int DriverDebug::Done(Context ctx, BenchType step) {
       to_string(step));
 
   switch (step) {
-    case IA_SET:
-    case IA_BATCH:
-    case IA_CRUD:
-    case IA_DELETE:
-    case IA_ITERATE:
-    case IA_GET:
+    case kTypeSet:
+    case kTypeBatch:
+    case kTypeCrud:
+    case kTypeDelete:
+    case kTypeIterate:
+    case kTypeGet:
       rc = 0;
       break;
 
