@@ -3,37 +3,41 @@
 // You may obtain a copy of the License at LICENSE file in the root.
 
 #include <cassert>
-#include <cerrno>
 #include <format>
 
 #include "base.h"
 #include "driver.h"
 #include "lmdb.h"
 
+#ifndef HAVE_LMDB
+  #error \
+      "Driver implementation requires `HAVE_LMDB` variable that includes the definitions"
+#endif  // !HAVE_LMDB
+
 namespace {
 
 constexpr MDB_dbi INVALID_DBI = -1;
 
-}
+}  // namespace
 
 struct DriverLmdbContext {
   MDB_txn *txn = nullptr;
   MDB_cursor *cursor = nullptr;
 };
 
-class DriverLmdb : public Driver {
+class DriverLmdb final : public Driver {
  public:
   [[nodiscard]] std::string_view GetName() const override { return "lmdb"; }
 
-  int Open(Config *config, const std::string &datadir) override;
-  int Close() override;
+  Result Open(Config *config, const std::string &datadir) override;
+  Result Close() override;
 
   Context ThreadNew() override;
   void ThreadDispose(Context ctx) override;
 
-  int Begin(Context ctx, BenchType step) override;
-  int Next(Context ctx, BenchType step, Record *kv) override;
-  int Done(Context ctx, BenchType step) override;
+  Result Begin(Context ctx, BenchType step) override;
+  Result Next(Context ctx, BenchType step, Record *kv) override;
+  Result Done(Context ctx, BenchType step) override;
 
  private:
   Config *config_ = nullptr;
@@ -42,7 +46,7 @@ class DriverLmdb : public Driver {
   MDB_dbi dbi = INVALID_DBI;
 };
 
-int DriverLmdb::Open(Config *config, const std::string &datadir) {
+Result DriverLmdb::Open(Config *config, const std::string &datadir) {
   config_ = config;
 
   unsigned modeflags;
@@ -50,13 +54,13 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
   int rc = mdb_env_create(&env);
   if (rc != MDB_SUCCESS) {
     Log("error: {}, {} ({})", __func__, mdb_strerror(rc), rc);
-    return -1;
+    return Result::kUnexpectedError;
   }
 
   rc = mdb_env_set_mapsize(env, 4ULL * 1024 * 1024 * 1024);
   if (rc != MDB_SUCCESS) {
     Log("error: {}, {} ({})", __func__, mdb_strerror(rc), rc);
-    return -1;
+    return Result::kUnexpectedError;
   }
 
   // suggestions are welcome
@@ -71,9 +75,8 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
       modeflags = MDB_WRITEMAP | MDB_MAPASYNC;  // NOLINT(hicpp-signed-bitwise)
       break;
     default:
-      Log("error: {}(): unsupported syncmode {}", __func__,
-          to_string(config_->syncmode));
-      return -1;
+      Fatal("error: {}(): unsupported syncmode {}", __func__,
+            to_string(config_->syncmode));
   }
 
   switch (config_->walmode) {
@@ -82,21 +85,21 @@ int DriverLmdb::Open(Config *config, const std::string &datadir) {
       break;
     case kWalEnabled:
     default:
-      Log("error: {}(): unsupported walmode {}", __func__,
-          to_string(config_->walmode));
-      return -1;
+      Fatal("error: {}(): unsupported walmode {}", __func__,
+            to_string(config_->walmode));
   }
 
   // NOLINTNEXTLINE(hicpp-signed-bitwise)
   rc = mdb_env_open(env, datadir.c_str(), modeflags | MDB_NORDAHEAD, 0644);
   if (rc != MDB_SUCCESS) {
     Log("error: {}, {} ({})", __func__, mdb_strerror(rc), rc);
-    return -1;
+    return Result::kUnexpectedError;
   }
-  return 0;
+
+  return Result::kOk;
 }
 
-int DriverLmdb::Close() {
+Result DriverLmdb::Close() {
   if (dbi != INVALID_DBI) {
     mdb_dbi_close(env, dbi);
   }
@@ -105,22 +108,19 @@ int DriverLmdb::Close() {
     mdb_env_close(env);
   }
 
-  return 0;
+  return Result::kOk;
 }
 
 Driver::Context DriverLmdb::ThreadNew() {
-  int rc;
-
   if (dbi == INVALID_DBI) {
     MDB_txn *txn = nullptr;
 
-    rc = mdb_txn_begin(env, nullptr, 0, &txn);
-    if (rc != MDB_SUCCESS) {
+    if (auto rc = mdb_txn_begin(env, nullptr, 0, &txn); rc != MDB_SUCCESS) {
       Log("error: {}, {} ({})", __func__, mdb_strerror(rc), rc);
       return nullptr;
     }
 
-    rc = mdb_dbi_open(txn, nullptr, 0, &dbi);
+    int rc = mdb_dbi_open(txn, nullptr, 0, &dbi);
     mdb_txn_abort(txn);
     if (rc != MDB_SUCCESS) {
       Log("error: {}, {} ({})", __func__, mdb_strerror(rc), rc);
@@ -147,7 +147,7 @@ void DriverLmdb::ThreadDispose(Context ctxptr) {
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-int DriverLmdb::Begin(Context ctxptr, BenchType step) {
+Result DriverLmdb::Begin(Context ctxptr, BenchType step) {
   assert(dbi != INVALID_DBI);
 
   auto *ctx = static_cast<DriverLmdbContext *>(ctxptr);
@@ -157,7 +157,7 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
     case kTypeSet:
     case kTypeBatch:
     case kTypeCrud:
-    case kTypeDelete:
+    case kTypeDelete: {
       if (ctx->cursor != nullptr) {
         // cursor could NOT be reused for read/write
         mdb_cursor_close(ctx->cursor);
@@ -168,16 +168,17 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
         mdb_txn_abort(ctx->txn);
         ctx->txn = nullptr;
       }
-      rc = mdb_txn_begin(env, nullptr, 0, &ctx->txn);
+      int rc = mdb_txn_begin(env, nullptr, 0, &ctx->txn);
       if (rc != MDB_SUCCESS) {
         Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
-        return rc;
+        return Result::kUnexpectedError;
       }
       break;
+    }
 
     case kTypeIterate:
-    case kTypeGet:
+    case kTypeGet: {
       if (ctx->txn != nullptr) {
         rc = mdb_txn_renew(ctx->txn);
         if (rc != MDB_SUCCESS) {
@@ -186,11 +187,11 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
         }
       }
       if (ctx->txn == nullptr) {
-        rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &ctx->txn);
+        auto rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &ctx->txn);
         if (rc != MDB_SUCCESS) {
           Log("error: {}, {}, {} ({})", __func__, to_string(step),
               mdb_strerror(rc), rc);
-          return rc;
+          return Result::kUnexpectedError;
         }
       }
 
@@ -203,30 +204,29 @@ int DriverLmdb::Begin(Context ctxptr, BenchType step) {
           }
         }
         if (ctx->cursor == nullptr) {
-          rc = mdb_cursor_open(ctx->txn, dbi, &ctx->cursor);
+          auto rc = mdb_cursor_open(ctx->txn, dbi, &ctx->cursor);
           if (rc != MDB_SUCCESS) {
             Log("error: {}, {}, {} ({})", __func__, to_string(step),
                 mdb_strerror(rc), rc);
-            return rc;
+            return Result::kUnexpectedError;
           }
         }
       }
       break;
+    }
 
     case kTypeMaxCode:
-      assert(0);
-      break;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
 
-int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
+Result DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
   auto *ctx = static_cast<DriverLmdbContext *>(ctxptr);
 
   MDB_val k;
   MDB_val v;
-  int rc;
 
   switch (step) {
     case kTypeSet:
@@ -234,83 +234,82 @@ int DriverLmdb::Next(Context ctxptr, BenchType step, Record *kv) {
       k.mv_size = kv->key.size();
       v.mv_data = kv->value.data();
       v.mv_size = kv->value.size();
-      rc = mdb_put(ctx->txn, dbi, &k, &v, 0);
+      if (auto rc = mdb_put(ctx->txn, dbi, &k, &v, 0); rc != MDB_SUCCESS) {
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
+            mdb_strerror(rc), rc);
+        return Result::kUnexpectedError;
+      }
+      break;
+
+    case kTypeDelete: {
+      k.mv_data = kv->key.data();
+      k.mv_size = kv->key.size();
+      auto rc = mdb_del(ctx->txn, dbi, &k, nullptr);
+      if (rc == MDB_NOTFOUND) {
+        return Result::kNotFound;
+      }
       if (rc != MDB_SUCCESS) {
         Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
-        return -1;
+        return Result::kUnexpectedError;
       }
       break;
+    }
 
-    case kTypeDelete:
-      k.mv_data = kv->key.data();
-      k.mv_size = kv->key.size();
-      rc = mdb_del(ctx->txn, dbi, &k, nullptr);
+    case kTypeIterate: {
+      auto rc = mdb_cursor_get(ctx->cursor, &k, &v, MDB_NEXT);
       if (rc == MDB_NOTFOUND) {
-        rc = ENOENT;
-      } else if (rc != MDB_SUCCESS) {
-        Log("error: {}, {}, {} ({})", __func__, to_string(step),
-            mdb_strerror(rc), rc);
-        return -1;
-      }
-      break;
-
-    case kTypeIterate:
-      rc = mdb_cursor_get(ctx->cursor, &k, &v, MDB_NEXT);
-      if (rc == MDB_SUCCESS) {
-        kv->key = std::span(static_cast<char *>(k.mv_data), k.mv_size);
-        kv->value = std::span(static_cast<char *>(v.mv_data), v.mv_size);
-      } else if (rc == MDB_NOTFOUND) {
         kv->key = std::span<char>();
         kv->value = std::span<char>();
-        rc = ENOENT;
-      } else {
+        return Result::kNotFound;
+      }
+      if (rc != MDB_SUCCESS) {
         Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
-        return -1;
+        return Result::kUnexpectedError;
       }
+      kv->key = std::span(static_cast<char *>(k.mv_data), k.mv_size);
+      kv->value = std::span(static_cast<char *>(v.mv_data), v.mv_size);
       break;
+    }
 
-    case kTypeGet:
+    case kTypeGet: {
       k.mv_data = kv->key.data();
       k.mv_size = kv->key.size();
-      rc = mdb_get(ctx->txn, dbi, &k, &v);
+      auto rc = mdb_get(ctx->txn, dbi, &k, &v);
+      if (rc == MDB_NOTFOUND) {
+        return Result::kNotFound;
+      }
       if (rc != MDB_SUCCESS) {
-        if (rc != MDB_NOTFOUND) {
-          Log("error: {}, {}, {} ({})", __func__, to_string(step),
-              mdb_strerror(rc), rc);
-          return -1;
-        }
-        rc = ENOENT;
+        Log("error: {}, {}, {} ({})", __func__, to_string(step),
+            mdb_strerror(rc), rc);
+        return Result::kUnexpectedError;
       }
       break;
+    }
 
     default:
-      assert(0);
-      rc = -1;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
 
-int DriverLmdb::Done(Context ctxptr, BenchType step) {
+Result DriverLmdb::Done(Context ctxptr, BenchType step) {
   auto *ctx = static_cast<DriverLmdbContext *>(ctxptr);
-
-  int rc;
 
   switch (step) {
     case kTypeSet:
     case kTypeBatch:
     case kTypeCrud:
     case kTypeDelete:
-      rc = mdb_txn_commit(ctx->txn);
-      if (rc != MDB_SUCCESS) {
+      if (auto rc = mdb_txn_commit(ctx->txn); rc != MDB_SUCCESS) {
         mdb_txn_abort(ctx->txn);
         ctx->txn = nullptr;
 
         Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
-        return -1;
+        return Result::kUnexpectedError;
       }
       ctx->txn = nullptr;
       break;
@@ -318,15 +317,13 @@ int DriverLmdb::Done(Context ctxptr, BenchType step) {
     case kTypeIterate:
     case kTypeGet:
       mdb_txn_reset(ctx->txn);
-      rc = 0;
       break;
 
     default:
-      assert(0);
-      rc = -1;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
 
 Driver *driver_lmdb() {

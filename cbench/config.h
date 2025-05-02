@@ -61,7 +61,7 @@ struct Config {
   explicit Config(std::string supported) : supported_(std::move(supported)) {}
 
   std::string driver_name;
-  std::string dirname = "./_cdb_tmp";
+  std::string dirname = "./_cbench.tmp";
   std::set<BenchType> benchmarks{kTypeGet, kTypeSet};
 
   uintmax_t count = 1000000;
@@ -73,7 +73,7 @@ struct Config {
   size_t rthr = sysconf(_SC_NPROCESSORS_ONLN),
          wthr = sysconf(_SC_NPROCESSORS_ONLN);
 
-  int kvseed = 42;
+  int kvseed = 0;
   int nrepeat = 1;
   int batch_length = 500;
 

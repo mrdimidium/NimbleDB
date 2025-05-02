@@ -14,8 +14,15 @@
 #include <string>
 #include <string_view>
 
+#include "base.h"
 #include "config.h"
-#include "record.h"
+
+// Specifies a key and value pair to write or read in the driver.
+// The driver itself does not own the write memory and only reads/copies to it.
+struct Record {
+  std::span<char> key;
+  std::span<char> value;
+};
 
 // Driver is a universal interface to different databases.
 // To add support for a new database, create a `dirver_<dbname>.cc` file and
@@ -29,11 +36,11 @@ class Driver {
   [[nodiscard]] virtual std::string_view GetName() const = 0;
 
   // Opens a connection to the database, called only once for all threads.
-  virtual int Open(Config *config, const std::string &datadir) = 0;
+  virtual Result Open(Config *config, const std::string &datadir) = 0;
 
   // Closes the connection to the database,
   // called only once at the very end.
-  virtual int Close() = 0;
+  virtual Result Close() = 0;
 
   // Creates an opaque context for a each thread
   // Access to contexts is not synchronized, if the database requires
@@ -47,9 +54,9 @@ class Driver {
   // Begin->Next->..->Next->Done() Begin and End are needed to prepare
   // transactions and complex scenarios such as block recording if the database
   // supports it.
-  virtual int Begin(Context, BenchType) = 0;
-  virtual int Next(Context, BenchType, Record *kv) = 0;
-  virtual int Done(Context, BenchType) = 0;
+  virtual Result Begin(Context, BenchType) = 0;
+  virtual Result Next(Context, BenchType, Record *kv) = 0;
+  virtual Result Done(Context, BenchType) = 0;
 
   // Returns a list of supported driver names.
   // If the driver was excluded during build, this method will also exclude it.

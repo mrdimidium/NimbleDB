@@ -2,6 +2,8 @@
 /build-*
 /build_*
 
+*.tmp/
+
 # ignore build files
 CMakeCache.txt
 CMakeFiles

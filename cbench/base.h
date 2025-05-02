@@ -10,6 +10,23 @@
 #include <iostream>
 #include <ostream>
 
+enum class Result : uint8_t {
+  kOk = 0,
+  kNotFound = 1,
+  kSystemError = 2,
+  kUnexpectedError = 3,
+};
+
+inline bool operator!(Result result) { return result != Result::kOk; }
+
+// Create a bitmask where the first n bytes are included.
+constexpr uint64_t Bitmask(uint64_t n) { return ~UINT64_C(0) >> (64 - n); }
+
+// Aligns a `n` to a `bytes` boundary, 8 byte aligned by default.
+constexpr uint64_t Align(uint64_t n, size_t bytes = sizeof(uint64_t)) {
+  return (n + bytes - 1) & ~(bytes - 1);
+}
+
 template <typename... Args>
 inline void Log(std::format_string<Args...> fmt, Args &&...args) {
   std::cout << std::vformat(fmt.get(), std::make_format_args(args...)) << "\n"

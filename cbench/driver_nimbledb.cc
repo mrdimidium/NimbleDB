@@ -11,21 +11,26 @@
 #include "driver.h"
 #include "nimbledb/base.h"
 
+#ifndef HAVE_NIMBLEDB
+  #error \
+      "Driver implementation requires `HAVE_NIMBLEDB` variable that includes the definitions"
+#endif  // !HAVE_NIMBLEDB
+
 struct DriverNimbleDBContext {};
 
-class DriverNimbleDB : public Driver {
+class DriverNimbleDB final : public Driver {
  public:
   [[nodiscard]] std::string_view GetName() const override { return "nimbledb"; }
 
-  int Open(Config* /*config*/, const std::string& datadir) override;
-  int Close() override;
+  Result Open(Config* /*config*/, const std::string& datadir) override;
+  Result Close() override;
 
   Context ThreadNew() override;
   void ThreadDispose(Context ctx) override;
 
-  int Begin(Context ctx, BenchType step) override;
-  int Next(Context ctx, BenchType step, Record* kv) override;
-  int Done(Context ctx, BenchType step) override;
+  Result Begin(Context ctx, BenchType step) override;
+  Result Next(Context ctx, BenchType step, Record* kv) override;
+  Result Done(Context ctx, BenchType step) override;
 
  private:
   Config* config_ = nullptr;
@@ -33,28 +38,28 @@ class DriverNimbleDB : public Driver {
   std::shared_ptr<nimbledb::DB> db_ = nullptr;
 };
 
-int DriverNimbleDB::Open(Config* config, const std::string& datadir) {
+Result DriverNimbleDB::Open(Config* config, const std::string& datadir) {
   config_ = config;
 
   auto st = nimbledb::DB::Open(datadir + "/datafile.nmbl", {}, &db_);
   if (!st.IsOk()) {
-    Fatal("error: {}, {}", __func__, st.ToString());
-    return -1;
+    Log("error: {}, {}", __func__, st.ToString());
+    return Result::kUnexpectedError;
   }
 
-  return 0;
+  return Result::kOk;
 }
 
-int DriverNimbleDB::Close() {
+Result DriverNimbleDB::Close() {
   if (db_ != nullptr) {
     auto st = db_->Close();
     if (!st.IsOk()) {
-      Fatal("error: {}, {}", __func__, st.ToString());
-      return -1;
+      Log("error: {}, {}", __func__, st.ToString());
+      return Result::kUnexpectedError;
     }
   }
 
-  return 0;
+  return Result::kOk;
 }
 
 Driver::Context DriverNimbleDB::ThreadNew() {
@@ -66,13 +71,18 @@ void DriverNimbleDB::ThreadDispose(Context ctx) {
   delete static_cast<DriverNimbleDBContext*>(ctx);
 }
 
-int DriverNimbleDB::Begin(Context /*ctx*/, BenchType /*step*/) { return 0; }
-
-int DriverNimbleDB::Next(Context /*ctx*/, BenchType /*step*/, Record* /*kv*/) {
-  return 0;
+Result DriverNimbleDB::Begin(Context /*ctx*/, BenchType /*step*/) {
+  return Result::kOk;
 }
 
-int DriverNimbleDB::Done(Context /*ctx*/, BenchType /*step*/) { return 0; }
+Result DriverNimbleDB::Next(Context /*ctx*/, BenchType /*step*/,
+                            Record* /*kv*/) {
+  return Result::kOk;
+}
+
+Result DriverNimbleDB::Done(Context /*ctx*/, BenchType /*step*/) {
+  return Result::kOk;
+}
 
 Driver* driver_nimbledb() {
   static DriverNimbleDB instance;

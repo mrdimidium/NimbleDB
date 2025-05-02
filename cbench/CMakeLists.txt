@@ -13,7 +13,9 @@ project(cbench
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(DBBENCH_HEADERS
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+
+set(CBENCH_HEADERS
   "base.h"
   "driver.h"
   "config.h"
@@ -21,12 +23,16 @@ set(DBBENCH_HEADERS
   "histogram.h"
 )
 
-set(DBBENCH_FILES
+set(CBENCH_FILES
   "driver_debug.cc"
   "config.cc"
   "record.cc"
   "histogram.cc"
   "main.cc"
+)
+
+set(CBENCH_TESTS
+  "record_test.cc"
 )
 
 option(ENABLE_NIMBLEDB "Enable NimbleDB" ON)
@@ -101,7 +107,7 @@ include_directories("${PROJECT_SOURCE_DIR}")
 include_directories("${PROJECT_BINARY_DIR}")
 
 add_executable(cbench
-  ${DBBENCH_HEADERS} ${DBBENCH_FILES}
+  ${CBENCH_HEADERS} ${CBENCH_FILES}
   "$<$<BOOL:${ENABLE_NIMBLEDB}>:driver_nimbledb.cc>"
   "$<$<BOOL:${ENABLE_LMDB}>:driver_lmdb.cc>"
   "$<$<BOOL:${ENABLE_ROCKSDB}>:driver_rocksdb.cc>"

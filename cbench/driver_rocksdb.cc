@@ -15,6 +15,11 @@
 #include "config.h"
 #include "driver.h"
 
+#ifndef HAVE_ROCKSDB
+  #error \
+      "Driver implementation requires `HAVE_ROCKSDB` variable that includes the definitions"
+#endif  // !HAVE_ROCKSDB
+
 namespace {
 
 rocksdb::Slice ToSlice(std::span<char> span) {
@@ -28,19 +33,19 @@ struct DriverRocksDBContext {
   rocksdb::WriteBatch *batch = nullptr;
 };
 
-class DriverRocksDB : public Driver {
+class DriverRocksDB final : public Driver {
  public:
   [[nodiscard]] std::string_view GetName() const override { return "rocksdb"; }
 
-  int Open(Config * /*config*/, const std::string &datadir) override;
-  int Close() override;
+  Result Open(Config * /*config*/, const std::string &datadir) override;
+  Result Close() override;
 
   Context ThreadNew() override;
   void ThreadDispose(Context ctx) override;
 
-  int Begin(Context ctx, BenchType step) override;
-  int Next(Context ctx, BenchType step, Record *kv) override;
-  int Done(Context ctx, BenchType step) override;
+  Result Begin(Context ctx, BenchType step) override;
+  Result Next(Context ctx, BenchType step, Record *kv) override;
+  Result Done(Context ctx, BenchType step) override;
 
  private:
   Config *config_ = nullptr;
@@ -52,7 +57,7 @@ class DriverRocksDB : public Driver {
   rocksdb::WriteOptions wopts;
 };
 
-int DriverRocksDB::Open(Config *config, const std::string &datadir) {
+Result DriverRocksDB::Open(Config *config, const std::string &datadir) {
   config_ = config;
 
   opts.compression = rocksdb::kNoCompression;
@@ -92,19 +97,19 @@ int DriverRocksDB::Open(Config *config, const std::string &datadir) {
 
   auto st = rocksdb::DB::Open(opts, datadir, &db);
   if (!st.ok()) {
-    Fatal("error: {}, {}", __func__, st.ToString());
-    return -1;
+    Log("error: {}, {}", __func__, st.ToString());
+    return Result::kUnexpectedError;
   }
 
-  return 0;
+  return Result::kOk;
 }
 
-int DriverRocksDB::Close() {
+Result DriverRocksDB::Close() {
   if (db != nullptr) {
     auto st = db->Close();
     assert(st.ok());
   }
-  return 0;
+  return Result::kOk;
 }
 
 Driver::Context DriverRocksDB::ThreadNew() {
@@ -120,7 +125,7 @@ void DriverRocksDB::ThreadDispose(Context ctxptr) {
   delete ctx;
 }
 
-int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
+Result DriverRocksDB::Begin(Context ctxptr, BenchType step) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
@@ -134,7 +139,7 @@ int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
       if (ctx->it == nullptr) {
         Log("error: {}, {}, rocksdb_create_iterator() failed", __func__,
             to_string(step));
-        return -1;
+        return Result::kUnexpectedError;
       }
       ctx->it->SeekToFirst();
       break;
@@ -145,7 +150,7 @@ int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
       if (ctx->batch == nullptr) {
         Log("error: {}, {}, rocksdb_writebatch_create() failed", __func__,
             to_string(step));
-        return -1;
+        return Result::kUnexpectedError;
       }
       break;
 
@@ -153,10 +158,10 @@ int DriverRocksDB::Begin(Context ctxptr, BenchType step) {
       Unreachable();
   }
 
-  return 0;
+  return Result::kOk;
 }
 
-int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
+Result DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
@@ -169,7 +174,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       }
       if (!st.ok()) {
         Log("error: {}, {}, {}", __func__, to_string(step), st.ToString());
-        return -1;
+        return Result::kUnexpectedError;
       }
       break;
     }
@@ -183,7 +188,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       }
       if (!st.ok()) {
         Log("error: {}, {}, {}", __func__, to_string(step), st.ToString());
-        return -1;
+        return Result::kUnexpectedError;
       }
       break;
     }
@@ -194,12 +199,12 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
                         ToSlice(kv->key), &value);
       if (st.IsNotFound()) {
         if (ctx->batch == nullptr) /* TODO: rework to avoid */ {
-          return ENOENT;
+          return Result::kNotFound;
         }
       }
       if (!st.ok()) {
         Log("error: {}, {}, {}", __func__, to_string(step), st.ToString());
-        return -1;
+        return Result::kUnexpectedError;
       }
 
       strncpy(kv->value.data(), value.data(), value.size());
@@ -209,7 +214,7 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
 
     case kTypeIterate: {
       if (ctx->it->Valid()) {
-        return ENOENT;
+        return Result::kNotFound;
       }
 
       auto key = ctx->it->key();
@@ -225,10 +230,10 @@ int DriverRocksDB::Next(Context ctxptr, BenchType step, Record *kv) {
       Unreachable();
   }
 
-  return 0;
+  return Result::kOk;
 }
 
-int DriverRocksDB::Done(Context ctxptr, BenchType step) {
+Result DriverRocksDB::Done(Context ctxptr, BenchType step) {
   auto *ctx = static_cast<DriverRocksDBContext *>(ctxptr);
 
   switch (step) {
@@ -250,7 +255,7 @@ int DriverRocksDB::Done(Context ctxptr, BenchType step) {
         auto st = db->Write(wopts, ctx->batch);
         if (!st.ok()) {
           Log("error: {}, {}, {}", __func__, to_string(step), st.ToString());
-          return -1;
+          return Result::kUnexpectedError;
         }
         delete ctx->batch;
         ctx->batch = nullptr;
@@ -261,7 +266,7 @@ int DriverRocksDB::Done(Context ctxptr, BenchType step) {
       Unreachable();
   }
 
-  return 0;
+  return Result::kOk;
 }
 
 Driver *driver_rocksdb() {

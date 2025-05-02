@@ -17,6 +17,7 @@
 #include <atomic>
 #include <cassert>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -106,19 +107,20 @@ void PrintUsage(const Usage &start, const Usage &fihish) {
 
 class Worker {
  public:
-  explicit Worker(size_t id, size_t benchmask, int key_space, int key_sequence,
+  explicit Worker(size_t id, size_t benchmask_mask, size_t key_space,
+                  size_t key_sequence, const Keyer::Options &keyer_options,
                   Config *config, Driver *driver, Histogram *histograms,
                   const std::atomic_bool &failed)
       : id_(id),
         key_space_(key_space),
         key_sequence_(key_sequence),
-        benchmask_(benchmask),
+        benchmask_(benchmask_mask),
         hg_(histograms),
         g_failed_(failed),
         config_(config),
         driver_(driver),
         histograms_(histograms) {
-    if (benchmask <= 0) {
+    if (benchmask_mask <= 0) {
       Fatal("error: There is no tasks for the worker");
     }
 
@@ -126,7 +128,7 @@ class Worker {
 
     std::string line;
     for (size_t bench = kTypeSet; bench < kTypeMaxCode; ++bench) {
-      if ((benchmask & (1U << bench)) != 0) {
+      if ((benchmask_mask & (1U << bench)) != 0) {
         if (!line.empty()) {
           line += ", ";
         }
@@ -134,12 +136,12 @@ class Worker {
       }
     }
 
-    gen_a_ = std::make_unique<RecordGen>(key_space_, key_sequence_,
-                                         config_->value_size, 0);
+    gen_a_ = std::make_unique<Keyer>(key_space_, key_sequence_, keyer_options);
 
-    if ((benchmask & kBenchMask2Keyspace) != 0) {
-      gen_b_ = std::make_unique<RecordGen>(key_space_ + 1, key_sequence_,
-                                           config_->value_size, 0);
+    if ((benchmask_mask & kBenchMask2Keyspace) != 0) {
+      gen_b_ =
+          std::make_unique<Keyer>(key_space_ + 1, key_sequence_, keyer_options);
+
       Log("worker.{}: {}, key-space {} and {}, key-sequence {}", id_, line,
           key_space, key_space + 1, key_sequence);
     } else {
@@ -166,9 +168,9 @@ class Worker {
     size_t count = 0;
     while (count < config_->nrepeat ||
            (config_->continuous_completing && doers_done_ < workers_count_)) {
-      int rc = 0;
+      Result rc = Result::kOk;
 
-      for (size_t it = kTypeSet; rc == 0 && it < kTypeMaxCode; it++) {
+      for (size_t it = kTypeSet; rc == Result::kOk && it < kTypeMaxCode; it++) {
         if ((benchmask_ & (1U << it)) == 0) {
           continue;
         }
@@ -177,7 +179,7 @@ class Worker {
 
         hg_.Reset(bench);
 
-        for (size_t i = 0; rc == 0 && i < config_->count;) {
+        for (size_t i = 0; rc == Result::kOk && i < config_->count;) {
           switch (it) {
             case kTypeSet:
             case kTypeDelete:
@@ -198,7 +200,7 @@ class Worker {
             default:
               Fatal("1");
               Unreachable();
-              rc = -1;
+              rc = Result::kUnexpectedError;
           }
         }
 
@@ -209,7 +211,7 @@ class Worker {
         doers_done_ += 1;
       }
 
-      if ((rc != 0) || g_failed_) {
+      if (!rc || g_failed_) {
         break;
       }
     }
@@ -221,52 +223,52 @@ class Worker {
   }
 
  private:
-  int EvalCrud(Record *a, Record *b) {
-    int rc = driver_->Next(ctx_, kTypeSet, b);
-    if (rc != 0) {
+  Result EvalCrud(Record *a, Record *b) {
+    if (auto rc = driver_->Next(ctx_, kTypeSet, b); !rc) {
       return rc;
     }
 
-    rc = driver_->Next(ctx_, kTypeSet, a);
-    if (rc != 0) {
+    if (auto rc = driver_->Next(ctx_, kTypeSet, a); !rc) {
       return rc;
     }
 
-    rc = driver_->Next(ctx_, kTypeDelete, b);
-    if (rc == ENOENT) {
-      LogKeyNotFound("crud.del", b);
-      if (!config_->ignore_keynotfound) {
-        rc = 0;
+    if (auto rc = driver_->Next(ctx_, kTypeDelete, b); !rc) {
+      if (rc == Result::kNotFound) {
+        LogKeyNotFound("crud.del", b);
+        if (!config_->ignore_keynotfound) {
+          return Result::kNotFound;
+        }
+      } else {
+        return rc;
       }
     }
 
-    if (rc != 0) {
-      return rc;
-    }
-
-    rc = driver_->Next(ctx_, kTypeGet, a);
-    if (rc == ENOENT) {
-      LogKeyNotFound("crud.get", a);
-      if (config_->ignore_keynotfound) {
-        rc = 0;
+    if (auto rc = driver_->Next(ctx_, kTypeGet, a); !rc) {
+      if (rc == Result::kNotFound) {
+        LogKeyNotFound("crud.get", a);
+        if (!config_->ignore_keynotfound) {
+          return Result::kNotFound;
+        }
+      } else {
+        return rc;
       }
     }
 
-    return rc;
+    return Result::kOk;
   }
 
-  int EvalBenchmarkGST(BenchType bench) {
-    int rc = 0;
-    int rc2 = 0;
+  Result EvalBenchmarkGST(BenchType bench) {
+    Result rc = Result::kOk;
+    Result rc2 = Result::kOk;
     Record a;
 
     if (gen_a_->Get(&a, bench != kTypeSet) != 0) {
-      return rc;
+      return Result::kUnexpectedError;
     }
 
     Time t0 = GetTimeNow();
     rc = driver_->Begin(ctx_, bench);
-    if (rc == 0) {
+    if (!rc) {
       rc = driver_->Next(ctx_, bench, &a);
     }
     rc2 = driver_->Done(ctx_, bench);
@@ -274,83 +276,82 @@ class Worker {
     hg_.Add(t0, bench == kTypeDelete ? a.key.size()
                                      : a.key.size() + a.value.size());
 
-    if (rc == ENOENT) {
+    if (rc == Result::kNotFound) {
       std::string name{to_string(bench)};
       LogKeyNotFound(name.c_str(), &a);
       if (config_->ignore_keynotfound) {
-        rc = 0;
+        rc = Result::kOk;
       }
     }
-    if (rc == 0) {
+    if (!rc) {
       rc = rc2;
     }
-    if (rc != 0) {
+    if (!rc) {
       return rc;
     }
 
-    return 0;
+    return Result::kOk;
   }
 
-  int EvalBenchmarkCrud() {
+  Result EvalBenchmarkCrud() {
     Record a;
     Record b;
 
     if (gen_a_->Get(&a, false) != 0 || gen_b_->Get(&b, false) != 0) {
-      return -1;
+      return Result::kUnexpectedError;
     }
 
     Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, kTypeCrud);
-    if (rc == 0) {
+    auto rc = driver_->Begin(ctx_, kTypeCrud);
+    if (rc == Result::kOk) {
       rc = EvalCrud(&a, &b);
     }
-    if (rc == 0) {
+    if (rc == Result::kOk) {
       rc = driver_->Done(ctx_, kTypeCrud);
     }
     hg_.Add(t0, a.key.size() + a.value.size() + b.key.size() + b.value.size() +
                     a.key.size() + b.key.size() + b.value.size());
-    if (rc != 0) {
+    if (!rc) {
       return rc;
     }
 
     return rc;
   }
 
-  int EvalBenchmarkBatch(size_t &i) {
+  Result EvalBenchmarkBatch(size_t &i) {
     Record a;
     Record b;
 
-    RecordPool pool_a(gen_a_.get(), config_->batch_length);
-    RecordPool pool_b(gen_b_.get(), config_->batch_length);
+    auto pool_a = gen_a_->GetBatch(config_->batch_length);
+    auto pool_b = gen_b_->GetBatch(config_->batch_length);
 
-    Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, kTypeBatch);
+    auto t0 = GetTimeNow();
+    auto rc = driver_->Begin(ctx_, kTypeBatch);
     for (size_t j = 0; j < config_->batch_length; ++j) {
-      if ((pool_a.Pull(&a) != 0) || (pool_b.Pull(&b) != 0)) {
-        return rc;
+      if (!pool_a.Load(&a) || !pool_b.Load(&b)) {
+        return Result::kUnexpectedError;
       }
       rc = EvalCrud(&a, &b);
-      if ((rc != 0) || ++i == config_->count) {
+      if (!rc || ++i == config_->count) {
         break;
       }
     }
-    if (rc == 0) {
+    if (rc == Result::kOk) {
       rc = driver_->Done(ctx_, kTypeBatch);
     }
-    hg_.Add(t0, (a.key.size() + a.value.size() + b.key.size() + b.value.size() +
-                 a.key.size() + b.key.size() + b.value.size()) *
-                    config_->batch_length);
-    if (rc != 0) {
-      return rc;
-    }
-    return 0;
+
+    auto record_size =
+        a.key.size() + a.value.size() + b.key.size() + b.value.size();
+    hg_.Add(t0, record_size * config_->batch_length);
+
+    return rc;
   }
 
-  int EvalBenchmarkIterate(size_t &i) {
+  Result EvalBenchmarkIterate(size_t &i) {
     Record a;
     Time t0 = GetTimeNow();
-    int rc = driver_->Begin(ctx_, kTypeIterate);
-    while (rc == 0) {
+    auto rc = driver_->Begin(ctx_, kTypeIterate);
+    while (rc == Result::kOk) {
       a.key = std::span<char>();
       a.value = std::span<char>();
       rc = driver_->Next(ctx_, kTypeIterate, &a);
@@ -360,10 +361,10 @@ class Worker {
       }
       t0 = GetTimeNow();
     }
-    if (rc == ENOENT) {
-      rc = 0;
+    if (rc == Result::kNotFound) {
+      rc = Result::kOk;
     }
-    if (rc == 0) {
+    if (rc == Result::kOk) {
       rc = driver_->Done(ctx_, kTypeIterate);
     }
     return rc;
@@ -390,8 +391,8 @@ class Worker {
 
   Driver::Context ctx_{};
 
-  std::unique_ptr<RecordGen> gen_a_ = nullptr;
-  std::unique_ptr<RecordGen> gen_b_ = nullptr;
+  std::unique_ptr<Keyer> gen_a_ = nullptr;
+  std::unique_ptr<Keyer> gen_b_ = nullptr;
 };
 
 std::atomic_int Worker::workers_count_ = 0;
@@ -418,7 +419,7 @@ class Runner {
       return -1;
     }
 
-    if (driver->Open(config_, datadir) != 0) {
+    if (!driver->Open(config_, datadir)) {
       return -1;
     }
 
@@ -448,15 +449,15 @@ class Runner {
       key_nspaces *= 2;
     }
 
-    int rc = RecordGen::Setup(!config_->binary, config_->key_size, key_nspaces,
-                              key_nsectors, config_->count, config_->kvseed);
-    if (rc != 0) {
-      Fatal(
-          "error: key-value generator setup failed, the options are correct?");
-    }
+    keyer_options_ = {.count = config_->count,
+                      .key_size = config_->key_size,
+                      .value_size = config_->value_size,
+                      .spaces_count = key_nspaces,
+                      .sectors_count = key_nsectors,
+                      .binary = config_->binary};
 
-    rc = pthread_barrier_init(&barrier_start_, nullptr,
-                              config_->rthr + config_->wthr + 1);
+    int rc = pthread_barrier_init(&barrier_start_, nullptr,
+                                  config_->rthr + config_->wthr + 1);
     if (rc != 0) {
       // NOLINTNEXTLINE(concurrency-mt-unsafe)
       Fatal("error: start pthread_barrier_init {} ({})", strerror(errno),
@@ -501,8 +502,8 @@ class Runner {
 
     SyncStart();
     if ((set_wr | set_rd) != 0) {
-      Worker worker(0, set_wr | set_rd, 0, 0, config_, driver_, histograms_,
-                    failed_);
+      Worker worker(0, set_wr | set_rd, 0, 0, keyer_options_, config_, driver_,
+                    histograms_, failed_);
 
       int rc = worker.FulFil();
       if (rc != 0) {
@@ -614,8 +615,8 @@ class Runner {
       }
 
       *nth += 1;
-      auto *worker = new Worker(*nth, mask, *key_space, *nth, config_, driver_,
-                                histograms_, failed_);
+      auto *worker = new Worker(*nth, mask, *key_space, *nth, keyer_options_,
+                                config_, driver_, histograms_, failed_);
 
       pthread_t thread;
       int rc = pthread_create(&thread, nullptr, WorkerThreadFunc, worker);
@@ -630,12 +631,15 @@ class Runner {
   }
 
   std::string datadir_;
+
   Config *config_ = nullptr;
   Driver *driver_ = nullptr;
   Histogram *histograms_ = nullptr;
 
   uint64_t set_rd = 0;
   uint64_t set_wr = 0;
+
+  Keyer::Options keyer_options_{};
 
   std::atomic_bool failed_ = false;
   int64_t before_open_ram_ = 0;
@@ -734,6 +738,8 @@ int main(int argc, char *argv[]) {
   Config config{Driver::Supported()};
   ParseCLIArguments(config, std::span<char *>(argv, argc));
   config.Print();
+
+  Keyer::Init(config.kvseed);
 
   auto *driver = Driver::GetDriverFor(config.driver_name);
   if (driver == nullptr) {

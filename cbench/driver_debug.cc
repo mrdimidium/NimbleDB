@@ -13,29 +13,29 @@ struct DriverDebugContext {
   int debug;
 };
 
-class DriverDebug : public Driver {
+class DriverDebug final : public Driver {
  public:
   [[nodiscard]] std::string_view GetName() const override { return "debug"; }
 
-  int Open(Config * /*config*/, const std::string &datadir) override;
-  int Close() override;
+  Result Open(Config * /*config*/, const std::string &datadir) override;
+  Result Close() override;
 
   Context ThreadNew() override;
   void ThreadDispose(Context ctx) override;
 
-  int Begin(Context ctx, BenchType step) override;
-  int Next(Context ctx, BenchType step, Record *kv) override;
-  int Done(Context ctx, BenchType step) override;
+  Result Begin(Context ctx, BenchType step) override;
+  Result Next(Context ctx, BenchType step, Record *kv) override;
+  Result Done(Context ctx, BenchType step) override;
 };
 
-int DriverDebug::Open(Config * /*config*/, const std::string &datadir) {
+Result DriverDebug::Open(Config * /*config*/, const std::string &datadir) {
   Log("{}.open({})", GetName(), datadir);
-  return 0;
+  return Result::kOk;
 }
 
-int DriverDebug::Close() {
+Result DriverDebug::Close() {
   Log("{}.close()", GetName());
-  return 0;
+  return Result::kOk;
 }
 
 Driver::Context DriverDebug::ThreadNew() {
@@ -49,9 +49,7 @@ void DriverDebug::ThreadDispose(Context ctx) {
   delete static_cast<DriverDebugContext *>(ctx);
 }
 
-int DriverDebug::Begin(Context ctx, BenchType step) {
-  int rc;
-
+Result DriverDebug::Begin(Context ctx, BenchType step) {
   Log("{}.begin({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
       to_string(step));
 
@@ -62,19 +60,16 @@ int DriverDebug::Begin(Context ctx, BenchType step) {
     case kTypeDelete:
     case kTypeIterate:
     case kTypeGet:
-      rc = 0;
-      break;
+      return Result::kOk;
 
     default:
-      assert(0);
-      rc = -1;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
-int DriverDebug::Next(Context ctx, BenchType step, Record *kv) {
-  int rc = 0;
 
+Result DriverDebug::Next(Context ctx, BenchType step, Record *kv) {
   switch (step) {
     case kTypeSet:
       Log("{}.next({:#x}, {}, {} -> {})", GetName(),
@@ -91,15 +86,13 @@ int DriverDebug::Next(Context ctx, BenchType step, Record *kv) {
           to_string(step));
       break;
     default:
-      assert(0);
-      rc = -1;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
-int DriverDebug::Done(Context ctx, BenchType step) {
-  int rc;
 
+Result DriverDebug::Done(Context ctx, BenchType step) {
   Log("{}.done({:#x}, {})", GetName(), reinterpret_cast<size_t>(ctx),
       to_string(step));
 
@@ -110,15 +103,13 @@ int DriverDebug::Done(Context ctx, BenchType step) {
     case kTypeDelete:
     case kTypeIterate:
     case kTypeGet:
-      rc = 0;
-      break;
+      return Result::kOk;
 
     default:
-      assert(0);
-      rc = -1;
+      Unreachable();
   }
 
-  return rc;
+  return Result::kOk;
 }
 
 Driver *driver_debug() {
