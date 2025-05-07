@@ -7,7 +7,6 @@
 #include <cassert>
 
 #include "base.h"
-#include "config.h"
 #include "driver.h"
 #include "nimbledb/base.h"
 

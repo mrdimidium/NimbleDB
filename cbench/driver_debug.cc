@@ -6,7 +6,6 @@
 #include <cstring>
 
 #include "base.h"
-#include "config.h"
 #include "driver.h"
 
 struct DriverDebugContext {

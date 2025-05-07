@@ -2,23 +2,12 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may obtain a copy of the License at LICENSE file in the root.
 
-#include "config.h"
-
-#include <fcntl.h>
-#include <ftw.h>
-#include <linux/limits.h>
-#include <pthread.h>
-#include <strings.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include "base.h"
 
 #include <cassert>
+#include <optional>
+#include <string>
 #include <string_view>
-
-#include "base.h"
 
 std::string_view to_string(BenchType b) {
   switch (b) {
@@ -109,28 +98,4 @@ std::optional<BenchWalMode> BenchWalModeFromString(const std::string &str) {
     return kWalDisabled;
   }
   return std::nullopt;
-}
-
-void Config::Print() const {
-  Log("Configuration:");
-  Log("\tdatabase   = {}", driver_name);
-  Log("\tdirname    = {}", dirname);
-  Log("\tbenchmarks = {}", Join(benchmarks));
-  Log("");
-  Log("\toperations = {}", count);
-  Log("");
-  Log("\tWAL mode   = {}", to_string(walmode));
-  Log("\tsync mode  = {}", to_string(syncmode));
-  Log("");
-  Log("\tkey size   = {}", key_size);
-  Log("\tvalue size = {}", value_size);
-  Log("");
-  Log("\tr-threads    = {}", rthr);
-  Log("\tw-threads    = {}", wthr);
-  Log("");
-  Log("\tbinary                = {}", binary ? "yes" : "no");
-  Log("\tseparate              = {}", separate ? "yes" : "no");
-  Log("\tignore not found      = {}", ignore_keynotfound ? "yes" : "no");
-  Log("\tcontinuous completing = {}", continuous_completing ? "yes" : "no");
-  Log("");
 }

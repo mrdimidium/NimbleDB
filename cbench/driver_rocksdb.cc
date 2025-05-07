@@ -12,7 +12,6 @@
 #include <cstring>
 
 #include "base.h"
-#include "config.h"
 #include "driver.h"
 
 #ifndef HAVE_ROCKSDB

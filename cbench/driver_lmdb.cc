@@ -168,7 +168,7 @@ Result DriverLmdb::Begin(Context ctxptr, BenchType step) {
         mdb_txn_abort(ctx->txn);
         ctx->txn = nullptr;
       }
-      int rc = mdb_txn_begin(env, nullptr, 0, &ctx->txn);
+      rc = mdb_txn_begin(env, nullptr, 0, &ctx->txn);
       if (rc != MDB_SUCCESS) {
         Log("error: {}, {}, {} ({})", __func__, to_string(step),
             mdb_strerror(rc), rc);
@@ -187,7 +187,7 @@ Result DriverLmdb::Begin(Context ctxptr, BenchType step) {
         }
       }
       if (ctx->txn == nullptr) {
-        auto rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &ctx->txn);
+        rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &ctx->txn);
         if (rc != MDB_SUCCESS) {
           Log("error: {}, {}, {} ({})", __func__, to_string(step),
               mdb_strerror(rc), rc);
@@ -204,7 +204,7 @@ Result DriverLmdb::Begin(Context ctxptr, BenchType step) {
           }
         }
         if (ctx->cursor == nullptr) {
-          auto rc = mdb_cursor_open(ctx->txn, dbi, &ctx->cursor);
+          rc = mdb_cursor_open(ctx->txn, dbi, &ctx->cursor);
           if (rc != MDB_SUCCESS) {
             Log("error: {}, {}, {} ({})", __func__, to_string(step),
                 mdb_strerror(rc), rc);

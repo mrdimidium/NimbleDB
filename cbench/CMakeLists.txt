@@ -15,26 +15,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
-set(CBENCH_HEADERS
-  "base.h"
-  "driver.h"
-  "config.h"
-  "record.h"
-  "histogram.h"
-)
-
-set(CBENCH_FILES
-  "driver_debug.cc"
-  "config.cc"
-  "record.cc"
-  "histogram.cc"
-  "main.cc"
-)
-
-set(CBENCH_TESTS
-  "record_test.cc"
-)
-
 option(ENABLE_NIMBLEDB "Enable NimbleDB" ON)
 if(ENABLE_NIMBLEDB)
   # This CMAakeLists.txt can be built independently or connected from the root.
@@ -106,19 +86,31 @@ find_package(CLI11 REQUIRED)
 include_directories("${PROJECT_SOURCE_DIR}")
 include_directories("${PROJECT_BINARY_DIR}")
 
+# move benchmark runner to the library so that
+# it is easy to test it independently of the drivers
+add_library(cbenchlib STATIC
+  "base.h" "base.cc"
+  "cbench.h" "cbench.cc"
+)
+nimble_compile_warnings(cbenchlib)
+target_include_directories(cbenchlib PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
+target_link_libraries(cbenchlib PUBLIC Threads::Threads CLI11::CLI11)
+
+# The executable only links with the drivers and runs the benchmark library.
 add_executable(cbench
-  ${CBENCH_HEADERS} ${CBENCH_FILES}
+  "main.cc" "driver_debug.cc"
   "$<$<BOOL:${ENABLE_NIMBLEDB}>:driver_nimbledb.cc>"
   "$<$<BOOL:${ENABLE_LMDB}>:driver_lmdb.cc>"
   "$<$<BOOL:${ENABLE_ROCKSDB}>:driver_rocksdb.cc>"
 )
+nimble_compile_warnings(cbench)
 target_compile_definitions(cbench PRIVATE
   "$<$<BOOL:${ENABLE_NIMBLEDB}>:-DHAVE_NIMBLEDB>"
   "$<$<BOOL:${ENABLE_LMDB}>:-DHAVE_LMDB>"
   "$<$<BOOL:${ENABLE_ROCKSDB}>:-DHAVE_ROCKSDB>"
 )
-target_link_libraries(cbench PUBLIC
-  Threads::Threads CLI11::CLI11
+target_link_libraries(cbench PUBLIC cbenchlib
   "$<$<BOOL:${ENABLE_NIMBLEDB}>:nimbledb::nimbledb>"
   "$<$<BOOL:${ENABLE_LMDB}>:liblmdb::liblmdb>"
   "$<$<BOOL:${ENABLE_ROCKSDB}>:rocksdb>"

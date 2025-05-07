@@ -16,7 +16,6 @@ project(nimbledb
 include(NimbleCompileWarnings) # should be after project derective
 
 set(CMAKE_CXX_STANDARD 20)  # 20 version required
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(NIMBLEDB_HEADERS
   "include/nimbledb/base.h"
@@ -92,6 +91,7 @@ add_library(${NIMBLEDB_LIB} ${NIMBLEDB_FILES} ${NIMBLEDB_HEADERS})
 add_library(${NIMBLEDB_LIB}::${NIMBLEDB_LIB} ALIAS ${NIMBLEDB_LIB})
 nimble_compile_warnings(${NIMBLEDB_LIB})
 
+target_compile_features(${NIMBLEDB_LIB} PUBLIC cxx_std_20)
 target_include_directories(${NIMBLEDB_LIB} PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 target_link_libraries(${NIMBLEDB_LIB} PRIVATE ${THIRDPARTY_LIBS})
@@ -128,6 +128,7 @@ if(NIMBLEDB_WITH_TESTS)
     get_filename_component(exename ${sourcefile} NAME_WE)
 
     add_executable(${exename} ${sourcefile})
+    target_compile_features(${exename} PUBLIC cxx_std_23)
     nimble_compile_warnings(${exename})
 
     set_target_properties(${exename} PROPERTIES

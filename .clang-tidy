@@ -3,7 +3,7 @@
 
 UseColor: true
 WarningsAsErrors: '*'
-HeaderFilterRegex: '^.*/(src|include)/.*'
+HeaderFilterRegex: '^.*/(src|include|cbench)/.*'
 
 # Enable all checks + disable selected checks.
 Checks: [
@@ -19,6 +19,7 @@ Checks: [
   '-cppcoreguidelines-*', # impractical in a large codebase, also slow
 
   '-hicpp-vararg',
+  '-misc-include-cleaner', # overall useful, but lots of false positives
   '-readability-magic-numbers',
   '-readability-identifier-length',
   '-modernize-use-trailing-return-type',
